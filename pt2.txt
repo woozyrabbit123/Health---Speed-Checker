@@ -1,0 +1,1687 @@
+This is an excellent idea, and your focus on implementing it *safely* is the critical part.
+
+**Yes, this can absolutely be done, and it fits perfectly with the "local-first, privacy-respecting" mission** we've designed.
+
+The wrong way would be to upload all your PC's hardware details to a server. We will **not** do that.
+
+Here is how we would implement this *safely* using the architecture from the provided project files.
+
+### 1. How to Implement It Safely (The "Local-First" Way)
+
+The logic is simple: the agent knows your PC specs, it downloads the game's requirements, and it compares them locally. **Your private hardware data never leaves your machine.**
+
+1.  **Agent Gathers Your Specs (Local):**
+    * [cite_start]The `agent/src/lib.rs` (specifically `checkers/process.rs` and `os_update.rs`) is already designed to get system information[cite: 169, 235].
+    * We would extend this to create a `SystemHardware` struct, filled with *local* data:
+        * **CPU Model:** (e.g., "Intel Core i7-9700K")
+        * **GPU Model:** (e.g., "NVIDIA GeForce RTX 2070")
+        * **RAM Amount:** (e.g., 16 GB)
+        * **OS Version:** (e.g., "Windows 11")
+
+2.  **Agent Downloads Game Requirements (Remote):**
+    * [cite_start]We would host a simple, public database (like the `cve_data` table [cite: 348]) that the app can query.
+    * The UI would have a search box: "Enter game name..."
+    * The app makes an **anonymous** API call: `GET /api/games/Cyberpunk2077`
+    * The server *only* returns the public minimum/recommended specs for that game.
+
+3.  **Agent Performs Comparison (Local):**
+    * The agent now has two pieces of data *locally*:
+        1.  Your `SystemHardware`.
+        2.  The downloaded `GameRequirements`.
+    * A new `GamingChecker` module would perform a simple comparison:
+        * `IF local_cpu > game_req_cpu` -> **PASS**
+        * `IF local_gpu > game_req_gpu` -> **PASS**
+        * `IF local_ram > game_req_ram` -> **PASS**
+    * The UI then displays: "✅ **You can run this game** on Recommended settings."
+
+### 2. How This Fits Into the Project Plan
+
+This feature is a *perfect* example of "feature creep" if we add it to the MVP, but it's an **ideal post-launch feature** that fits our plugin architecture and "Pro" monetization plan.
+
+* **It's a New "Checker" Module:**
+    Based on the plan in `PROJECT_INSTRUCTIONS.md`, we would *not* add this to Phases 1-5. [cite_start]Instead, it uses the `Checker` trait defined in `agent/src/lib.rs`[cite: 139, 140]. We would create:
+    `agent/src/checkers/gaming.rs`
+
+* **It's a "Post-Launch Roadmap" Feature:**
+    This would be added to **Section 8 (Post-Launch Roadmap)** of the `PROJECT_INSTRUCTIONS.md`. It fits perfectly alongside "privacy & firmware checkers".
+
+* **It's a "Pro Tier" Monetization Feature:**
+    This is a high-value feature, not a basic "health" check. [cite_start]As per the "Monetization & Growth" plan [cite: 61, 119][cite_start], this would be a major selling point for the **Pro tier**[cite: 68, 124], which already includes "gaming mode".
+
+**In short: Yes, it's a fantastic idea.** We would implement it safely by only downloading public game data and doing the comparison locally. It would be a new "Pro" plugin, built on the exact architecture we've already designed.
+
+Would you like me to update the project's "Post-Launch Roadmap" and "Monetization" sections to include this "Can I Run It?" feature?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "Health & Speed Checker",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "writeFile": true,
+        "readDir": true,
+        "createDir": true,
+        "removeDir": false,
+        "removeFile": false,
+        "exists": true,
+        "scope": ["$APPDATA", "$APPDATA/**", "$RESOURCE/**"]
+      },
+      "path": {
+        "all": true
+      },
+      "process": {
+        "all": false,
+        "exit": true,
+        "relaunch": true
+      },
+      "protocol": {
+        "all": false,
+        "asset": true,
+        "assetScope": ["**"]
+      },
+      "notification": {
+        "all": true
+      },
+      "clipboard": {
+        "all": false,
+        "writeText": true,
+        "readText": false
+      },
+      "dialog": {
+        "all": false,
+        "open": false,
+        "save": true,
+        "message": true,
+        "ask": true,
+        "confirm": true
+      },
+      "http": {
+        "all": false,
+        "request": false,
+        "scope": []
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Utility",
+      "copyright": "© 2024 Health & Speed Checker",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.healthspeedchecker.app",
+      "longDescription": "A privacy-first, local-only PC health and performance analyzer that helps you understand and fix system issues.",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Privacy-first PC health checker",
+      "targets": ["msi", "deb", "appimage", "dmg"],
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "wix": {
+          "language": "en-US",
+          "bannerPath": null,
+          "dialogImagePath": null,
+          "license": null
+        }
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://localhost:*; connect-src 'self' ipc: tauri: https://localhost:*"
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/yourusername/health-speed-checker/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": ""
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 720,
+        "resizable": true,
+        "title": "Health & Speed Checker",
+        "width": 1080,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "fileDropEnabled": false,
+        "transparent": false,
+        "theme": null,
+        "titleBarStyle": "Visible"
+      }
+    ],
+    "systemTray": {
+      "iconPath": "icons/icon.ico",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+  "name": "health-speed-checker-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.5.3",
+    "chart.js": "^4.4.1",
+    "clsx": "^2.1.0",
+    "framer-motion": "^10.18.0",
+    "lucide-react": "^0.303.0",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.9",
+    "@types/node": "^20.10.6",
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.18.1",
+    "@typescript-eslint/parser": "^6.18.1",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ui/src/App.tsx
+// Main React component for Health & Speed Checker
+
+import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/tauri';
+import { 
+  Shield, 
+  Zap, 
+  AlertTriangle, 
+  CheckCircle, 
+  Info,
+  Play,
+  Download,
+  Settings,
+  X,
+  ChevronRight,
+  Activity
+} from 'lucide-react';
+import './App.css';
+
+interface ScanResult {
+  scan_id: string;
+  timestamp: number;
+  duration_ms: number;
+  scores: {
+    health: number;
+    speed: number;
+    health_delta?: number;
+    speed_delta?: number;
+  };
+  issues: Issue[];
+  details: any;
+}
+
+interface Issue {
+  id: string;
+  severity: 'Critical' | 'Warning' | 'Info';
+  title: string;
+  description: string;
+  impact_category: string;
+  fix?: {
+    action_id: string;
+    label: string;
+    is_auto_fix: boolean;
+  };
+}
+
+interface ProgressEvent {
+  type: string;
+  payload: any;
+}
+
+function App() {
+  const [scanning, setScanning] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [currentTab, setCurrentTab] = useState<'overview' | 'security' | 'performance'>('overview');
+  const [ignoredIssues, setIgnoredIssues] = useState<Set<string>>(new Set());
+
+  // Start a scan
+  const startScan = async (quick: boolean = false) => {
+    setScanning(true);
+    setProgress(0);
+    setProgressMessage('Starting scan...');
+    
+    try {
+      const scanId = await invoke<string>('scan_start', {
+        options: {
+          security: true,
+          performance: true,
+          quick,
+          exclude_apps: quick,
+          exclude_startup: quick,
+        },
+      });
+
+      // Simulate progress (in real implementation, listen to events)
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 5;
+        });
+      }, 500);
+
+      // Simulate different scan stages
+      setTimeout(() => setProgressMessage('Checking security...'), 1000);
+      setTimeout(() => setProgressMessage('Analyzing performance...'), 2000);
+      setTimeout(() => setProgressMessage('Scanning processes...'), 3000);
+      setTimeout(() => setProgressMessage('Calculating scores...'), 4000);
+
+      // Get result after delay (simulated)
+      setTimeout(async () => {
+        const result = await invoke<ScanResult>('get_scan_result', { scanId });
+        setScanResult(result);
+        setScanning(false);
+        setProgress(100);
+        clearInterval(progressInterval);
+        setProgressMessage('Scan complete!');
+      }, 5000);
+    } catch (error) {
+      console.error('Scan failed:', error);
+      setScanning(false);
+      setProgressMessage('Scan failed');
+    }
+  };
+
+  // Fix an issue
+  const fixIssue = async (actionId: string, params: any) => {
+    try {
+      const result = await invoke('fix_action', { actionId, params });
+      console.log('Fix result:', result);
+      // Refresh scan after fix
+      startScan(true);
+    } catch (error) {
+      console.error('Fix failed:', error);
+    }
+  };
+
+  // Ignore an issue
+  const ignoreIssue = (issueId: string) => {
+    setIgnoredIssues(new Set([...ignoredIssues, issueId]));
+  };
+
+  // Get score color
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-500';
+    if (score >= 60) return 'text-yellow-500';
+    return 'text-red-500';
+  };
+
+  // Get severity icon
+  const getSeverityIcon = (severity: string) => {
+    switch (severity) {
+      case 'Critical':
+        return <AlertTriangle className="w-5 h-5 text-red-500" />;
+      case 'Warning':
+        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
+      case 'Info':
+        return <Info className="w-5 h-5 text-blue-500" />;
+      default:
+        return null;
+    }
+  };
+
+  // Filter visible issues
+  const visibleIssues = scanResult?.issues.filter(
+    (issue) => !ignoredIssues.has(issue.id)
+  ) || [];
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white">
+      {/* Header */}
+      <header className="border-b border-gray-800 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Activity className="w-8 h-8 text-blue-500" />
+            <h1 className="text-2xl font-bold">Health & Speed Checker</h1>
+          </div>
+          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+            <Settings className="w-5 h-5" />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="p-6">
+        {!scanning && !scanResult && (
+          <div className="max-w-4xl mx-auto">
+            {/* Welcome Screen */}
+            <div className="text-center py-16">
+              <div className="flex justify-center space-x-8 mb-12">
+                <div className="text-center">
+                  <Shield className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                  <h3 className="text-xl font-semibold">Security Check</h3>
+                  <p className="text-gray-400 mt-2">Scan for vulnerabilities</p>
+                </div>
+                <div className="text-center">
+                  <Zap className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
+                  <h3 className="text-xl font-semibold">Speed Analysis</h3>
+                  <p className="text-gray-400 mt-2">Find performance issues</p>
+                </div>
+              </div>
+              
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => startScan(false)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                >
+                  <Play className="w-5 h-5" />
+                  <span>Full Scan</span>
+                </button>
+                <button
+                  onClick={() => startScan(true)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <Zap className="w-5 h-5" />
+                  <span>Quick Scan (5s)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {scanning && (
+          <div className="max-w-2xl mx-auto py-16">
+            {/* Progress Screen */}
+            <div className="text-center">
+              <h2 className="text-2xl font-bold mb-8">Scanning Your System...</h2>
+              
+              <div className="mb-4">
+                <div className="bg-gray-800 rounded-full h-4 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+              
+              <p className="text-gray-400">{progressMessage}</p>
+              <p className="text-sm text-gray-500 mt-2">{progress}%</p>
+            </div>
+          </div>
+        )}
+
+        {scanResult && !scanning && (
+          <div className="max-w-6xl mx-auto">
+            {/* Results Screen */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              {/* Health Score Card */}
+              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center">
+                    <Shield className="w-5 h-5 mr-2 text-blue-500" />
+                    Health Score
+                  </h3>
+                  {scanResult.scores.health_delta && (
+                    <span className={scanResult.scores.health_delta > 0 ? 'text-green-500' : 'text-red-500'}>
+                      {scanResult.scores.health_delta > 0 ? '↑' : '↓'}
+                      {Math.abs(scanResult.scores.health_delta)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-center">
+                  <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.health)}`}>
+                    {scanResult.scores.health}
+                  </div>
+                  <div className="text-gray-400 mt-2">out of 100</div>
+                </div>
+              </div>
+
+              {/* Speed Score Card */}
+              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center">
+                    <Zap className="w-5 h-5 mr-2 text-yellow-500" />
+                    Speed Score
+                  </h3>
+                  {scanResult.scores.speed_delta && (
+                    <span className={scanResult.scores.speed_delta > 0 ? 'text-green-500' : 'text-red-500'}>
+                      {scanResult.scores.speed_delta > 0 ? '↑' : '↓'}
+                      {Math.abs(scanResult.scores.speed_delta)}
+                    </span>
+                  )}
+                </div>
+                <div className="text-center">
+                  <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.speed)}`}>
+                    {scanResult.scores.speed}
+                  </div>
+                  <div className="text-gray-400 mt-2">out of 100</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="border-b border-gray-800 mb-6">
+              <div className="flex space-x-6">
+                {['overview', 'security', 'performance'].map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setCurrentTab(tab as any)}
+                    className={`pb-3 px-1 border-b-2 transition-colors capitalize ${
+                      currentTab === tab
+                        ? 'border-blue-500 text-blue-500'
+                        : 'border-transparent text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Issues List */}
+            <div className="space-y-4">
+              {currentTab === 'overview' && (
+                <>
+                  <h3 className="text-xl font-semibold mb-4">
+                    Top Issues ({visibleIssues.length})
+                  </h3>
+                  
+                  {visibleIssues.slice(0, 5).map((issue) => (
+                    <div
+                      key={issue.id}
+                      className="bg-gray-900 rounded-lg p-4 border border-gray-800"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            {getSeverityIcon(issue.severity)}
+                            <span className="font-semibold">{issue.title}</span>
+                          </div>
+                          <p className="text-gray-400 text-sm mb-3">
+                            {issue.description}
+                          </p>
+                          <div className="flex items-center space-x-3">
+                            {issue.fix && (
+                              <button
+                                onClick={() => fixIssue(issue.fix!.action_id, {})}
+                                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                              >
+                                <CheckCircle className="w-4 h-4" />
+                                <span>{issue.fix.label}</span>
+                              </button>
+                            )}
+                            <button
+                              onClick={() => ignoreIssue(issue.id)}
+                              className="text-gray-400 hover:text-white text-sm"
+                            >
+                              Ignore
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {visibleIssues.length > 5 && (
+                    <p className="text-center text-gray-400 py-4">
+                      And {visibleIssues.length - 5} more issues...
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-center space-x-4 mt-8">
+              <button
+                onClick={() => startScan(false)}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                <span>Scan Again</span>
+              </button>
+              <button className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors">
+                <Download className="w-4 h-4" />
+                <span>Export Report</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, dev ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Test job - runs on all platforms
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: rustfmt, clippy
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: ui/package-lock.json
+    
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.0-dev \
+          build-essential \
+          curl \
+          wget \
+          libssl-dev \
+          libgtk-3-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev
+    
+    - name: Cache Rust dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Run tests
+      run: cargo test --verbose --workspace
+      working-directory: agent
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+      working-directory: agent
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+      working-directory: agent
+
+  # Build job - creates release artifacts
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: health-checker-linux-amd64
+            asset_extension: .tar.gz
+          
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: health-checker-windows-amd64
+            asset_extension: .zip
+          
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: health-checker-macos-amd64
+            asset_extension: .tar.gz
+          
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: health-checker-macos-arm64
+            asset_extension: .tar.gz
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        targets: ${{ matrix.target }}
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.0-dev \
+          build-essential \
+          curl \
+          wget \
+          libssl-dev \
+          libgtk-3-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev
+    
+    - name: Install frontend dependencies
+      run: npm ci
+      working-directory: ui
+    
+    - name: Build frontend
+      run: npm run build
+      working-directory: ui
+    
+    - name: Install Tauri CLI
+      run: npm install -g @tauri-apps/cli
+    
+    - name: Build Tauri app
+      run: npm run tauri build -- --target ${{ matrix.target }}
+      working-directory: ui
+    
+    - name: Package (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: |
+        cd target/${{ matrix.target }}/release
+        tar czf ../../../${{ matrix.artifact_name }}${{ matrix.asset_extension }} health-checker
+        cd ../../..
+    
+    - name: Package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd target/${{ matrix.target }}/release
+        7z a ../../../${{ matrix.artifact_name }}${{ matrix.asset_extension }} health-checker.exe
+        cd ../../..
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_name }}${{ matrix.asset_extension }}
+
+  # Release job - creates GitHub release
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+        body: |
+          ## Health & Speed Checker ${{ github.ref_name }}
+          
+          ### What's New
+          - See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+          
+          ### Installation
+          
+          #### Windows
+          1. Download `health-checker-windows-amd64.zip`
+          2. Extract the archive
+          3. Run `health-checker.exe`
+          
+          #### macOS
+          1. Download the appropriate file for your architecture:
+             - Intel: `health-checker-macos-amd64.tar.gz`
+             - Apple Silicon: `health-checker-macos-arm64.tar.gz`
+          2. Extract: `tar xzf health-checker-*.tar.gz`
+          3. Run: `./health-checker`
+          
+          #### Linux
+          1. Download `health-checker-linux-amd64.tar.gz`
+          2. Extract: `tar xzf health-checker-linux-amd64.tar.gz`
+          3. Run: `./health-checker`
+    
+    - name: Upload Release Assets
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          const release = await github.rest.repos.getReleaseByTag({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            tag: context.ref.replace('refs/tags/', '')
+          });
+          
+          const artifacts = [
+            'health-checker-linux-amd64.tar.gz',
+            'health-checker-windows-amd64.zip',
+            'health-checker-macos-amd64.tar.gz',
+            'health-checker-macos-arm64.tar.gz'
+          ];
+          
+          for (const artifact of artifacts) {
+            const artifactPath = path.join(process.env.GITHUB_WORKSPACE, artifact.replace(/\.(tar\.gz|zip)$/, ''), artifact);
+            
+            if (fs.existsSync(artifactPath)) {
+              console.log(`Uploading ${artifact}...`);
+              
+              await github.rest.repos.uploadReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: release.data.id,
+                name: artifact,
+                data: fs.readFileSync(artifactPath)
+              });
+            }
+          }
+
+  # Security audit
+  security_audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run cargo audit
+      uses: actions-rs/audit-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 🛡️ Health & Speed Checker
+
+[![Build Status](https://github.com/yourusername/health-speed-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/health-speed-checker/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/github/v/release/yourusername/health-speed-checker)](https://github.com/yourusername/health-speed-checker/releases)
+
+A privacy-first, local-only PC health and performance analyzer that answers two simple questions: **"Am I safe?"** and **"Why is my PC slow?"**
+
+![Health & Speed Checker Screenshot](docs/images/screenshot.png)
+
+## ✨ Features
+
+- 🔒 **100% Local** - No cloud, no telemetry, no account required
+- 🛡️ **Security Scanning** - OS updates, firewall status, open ports, vulnerable apps
+- ⚡ **Performance Analysis** - CPU/memory usage, startup bloat, process monitoring
+- 🔧 **One-Click Fixes** - Auto-remediation with system restore points
+- 📊 **Trend Tracking** - See how your system health changes over time
+- 🚀 **Quick Scan Mode** - Get results in 5 seconds
+- 📱 **Cross-Platform** - Windows, macOS, and Linux support
+
+## 🚀 Quick Start
+
+### Download Pre-built Binary
+
+Download the latest release for your platform from the [Releases](https://github.com/yourusername/health-speed-checker/releases) page.
+
+### Run from Command Line
+
+```bash
+# Quick scan (5 seconds)
+health-checker scan --quick
+
+# Full scan
+health-checker scan
+
+# Fix a specific issue
+health-checker fix windows_update_pending
+
+# View status
+health-checker status
+```
+
+### Desktop Application
+
+Simply double-click the downloaded application to launch the GUI.
+
+## 📦 Installation
+
+### Windows
+
+```powershell
+# Download the installer
+curl -LO https://github.com/yourusername/health-speed-checker/releases/latest/download/health-checker-windows.msi
+
+# Run the installer
+msiexec /i health-checker-windows.msi
+```
+
+### macOS
+
+```bash
+# Intel Macs
+brew install health-speed-checker
+
+# Or download directly
+curl -LO https://github.com/yourusername/health-speed-checker/releases/latest/download/health-checker-macos-amd64.tar.gz
+tar xzf health-checker-macos-amd64.tar.gz
+sudo mv health-checker /usr/local/bin/
+```
+
+### Linux
+
+```bash
+# Debian/Ubuntu
+wget https://github.com/yourusername/health-speed-checker/releases/latest/download/health-checker-linux.deb
+sudo dpkg -i health-checker-linux.deb
+
+# Or use the AppImage
+wget https://github.com/yourusername/health-speed-checker/releases/latest/download/health-checker.AppImage
+chmod +x health-checker.AppImage
+./health-checker.AppImage
+```
+
+### Portable Version (No Installation)
+
+Download the portable ZIP file, extract, and run directly from any location (even USB drives).
+
+## 🛠️ Building from Source
+
+### Prerequisites
+
+- Rust 1.75+ ([install](https://rustup.rs/))
+- Node.js 18+ ([install](https://nodejs.org/))
+- Platform-specific dependencies:
+  - **Windows**: Windows SDK
+  - **macOS**: Xcode Command Line Tools
+  - **Linux**: `libwebkit2gtk-4.0-dev`, `libgtk-3-dev`
+
+### Build Steps
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/health-speed-checker.git
+cd health-speed-checker
+
+# Build the Rust agent
+cd agent
+cargo build --release
+
+# Build the Tauri desktop app
+cd ../ui
+npm install
+npm run tauri build
+
+# The binary will be in:
+# - Windows: target/release/health-checker.exe
+# - macOS/Linux: target/release/health-checker
+```
+
+## 🎯 CLI Usage
+
+```bash
+# SCANNING
+health-checker scan                    # Full system scan
+health-checker scan --quick            # Quick 5-second scan
+health-checker scan --security         # Security only
+health-checker scan --performance      # Performance only
+health-checker scan --output json      # JSON output
+
+# FIXING ISSUES
+health-checker fix <issue-id>          # Fix specific issue
+health-checker fix --top-3             # Fix top 3 issues
+
+# REPORTING
+health-checker report list             # List past scans
+health-checker report show <scan-id>   # Show scan details
+health-checker report export <scan-id> --format pdf
+
+# CONFIGURATION
+health-checker config set telemetry=off
+health-checker config set auto-scan=daily
+health-checker config show
+
+# DAEMON MODE
+health-checker daemon start            # Run in background
+health-checker daemon stop
+health-checker daemon status
+```
+
+## 🏗️ Architecture
+
+```
+┌─────────────┐     IPC      ┌──────────────┐
+│  Tauri UI   │ ◄──────────► │  Rust Agent  │
+│  (React)    │              │              │
+└─────────────┘              └──────┬───────┘
+                                    │
+                            ┌───────▼───────┐
+                            │  Checkers     │
+                            │  - Firewall   │
+                            │  - Ports      │
+                            │  - Updates    │
+                            │  - Processes  │
+                            └───────────────┘
+```
+
+### Core Components
+
+- **Checker System**: Modular plugins for different scan types
+- **Scoring Engine**: Weighted algorithm for health/speed scores
+- **Fix Executor**: Safe remediation with automatic restore points
+- **Event Bus**: Real-time progress updates during scans
+
+## 🔒 Privacy & Security
+
+- **No telemetry by default** - Opt-in only, and even then it's anonymized
+- **Local database** - All data stored in `~/.healthchecker/`
+- **Open source** - Audit the code yourself
+- **Signed binaries** - Verified publisher on Windows/macOS
+- **Minimal permissions** - Only requests what's needed
+
+## 📊 What Gets Checked?
+
+### Security Checks
+- ✅ Operating system updates
+- ✅ Firewall status
+- ✅ Open network ports
+- ✅ Known vulnerabilities (CVE database)
+- ✅ Suspicious processes
+
+### Performance Checks
+- ✅ CPU usage and top processes
+- ✅ Memory usage and leaks
+- ✅ Startup programs
+- ✅ Disk usage
+- ✅ System resource bottlenecks
+
+## 🎨 Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/images/dashboard.png" alt="Dashboard" /></td>
+    <td><img src="docs/images/scan-progress.png" alt="Scan Progress" /></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/results.png" alt="Results" /></td>
+    <td><img src="docs/images/fixes.png" alt="Fixes" /></td>
+  </tr>
+</table>
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+```bash
+# Fork the repo, then:
+git clone https://github.com/yourusername/health-speed-checker.git
+cd health-speed-checker
+git checkout -b feature/your-feature
+# Make changes
+cargo test
+git commit -m "Add your feature"
+git push origin feature/your-feature
+# Open a Pull Request
+```
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Built with [Tauri](https://tauri.app/) for a lightweight desktop experience
+- Uses [Rust](https://www.rust-lang.org/) for performance and safety
+- Icons from [Lucide](https://lucide.dev/)
+
+## 🐛 Reporting Issues
+
+Found a bug? Please [open an issue](https://github.com/yourusername/health-speed-checker/issues/new) with:
+- Your OS version
+- Steps to reproduce
+- Expected vs actual behavior
+- Relevant logs (found in `~/.healthchecker/logs/`)
+
+## 💰 Support the Project
+
+If you find this useful, consider:
+- ⭐ Starring the repository
+- 🐦 Sharing on social media
+- ☕ [Buying us a coffee](https://buymeacoffee.com/yourusername)
+- 💼 Purchasing a [Pro license](https://healthspeedchecker.com/pro) for advanced features
+
+## 📧 Contact
+
+- GitHub Issues: [Project Issues](https://github.com/yourusername/health-speed-checker/issues)
+- Email: support@healthspeedchecker.com
+- Discord: [Join our community](https://discord.gg/yourinvite)
+
+---
+
+**Remember**: This tool provides recommendations. Always backup your data before making system changes.
+
+Made with ❤️ for the privacy-conscious community
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+dist/
+dist-ssr/
+*.local
+
+# Tauri
+src-tauri/target/
+
+# Editor directories and files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.dylib
+*.dmg
+*.app
+*.msi
+*.deb
+*.rpm
+*.AppImage
+*.tar.gz
+*.zip
+
+# Testing
+coverage/
+*.lcov
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# Project specific
+health-checker
+health-checker.exe
+/agent/target/
+/ui/dist/
+/ui/node_modules/
+/db/*.db
+/outputs/
+/releases/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ui/src/App.css */
+/* Tailwind CSS imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #030712;
+  color: #f3f4f6;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Utility classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Score indicators */
+.score-ring {
+  stroke-dasharray: 314;
+  stroke-dashoffset: calc(314 - (314 * var(--score)) / 100);
+  transition: stroke-dashoffset 1s ease-out;
+}
+
+/* Progress bar */
+.progress-bar {
+  background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+  transition: width 0.3s ease-out;
+}
+
+/* Issue severity badges */
+.severity-critical {
+  @apply bg-red-500/10 text-red-500 border-red-500/20;
+}
+
+.severity-warning {
+  @apply bg-yellow-500/10 text-yellow-500 border-yellow-500/20;
+}
+
+.severity-info {
+  @apply bg-blue-500/10 text-blue-500 border-blue-500/20;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors;
+}
+
+.btn-danger {
+  @apply px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors;
+}
+
+/* Card styles */
+.card {
+  @apply bg-gray-900 rounded-xl p-6 border border-gray-800;
+}
+
+.card-hover {
+  @apply hover:bg-gray-800 hover:border-gray-700 transition-all cursor-pointer;
+}
+
+/* Tab styles */
+.tab {
+  @apply pb-3 px-1 border-b-2 transition-colors;
+}
+
+.tab-active {
+  @apply border-blue-500 text-blue-500;
+}
+
+.tab-inactive {
+  @apply border-transparent text-gray-400 hover:text-white;
+}
+
+/* Status indicators */
+.status-healthy {
+  @apply text-green-500;
+}
+
+.status-warning {
+  @apply text-yellow-500;
+}
+
+.status-critical {
+  @apply text-red-500;
+}
+
+/* Tooltip */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 text-xs text-white bg-gray-800 rounded shadow-lg;
+}
+
+/* Loading states */
+.skeleton {
+  @apply animate-pulse bg-gray-800 rounded;
+}
+
+.spinner {
+  border: 2px solid #1f2937;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Grid layouts */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.issues-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .hide-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-lg {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
+}
+
+/* Dark mode overrides (if needed) */
+@media (prefers-color-scheme: dark) {
+  /* Already dark by default */
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  
+  .no-print {
+    display: none;
+  }
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Transitions */
+.transition-fast {
+  transition: all 0.15s ease-out;
+}
+
+.transition-normal {
+  transition: all 0.3s ease-out;
+}
+
+.transition-slow {
+  transition: all 0.5s ease-out;
+}

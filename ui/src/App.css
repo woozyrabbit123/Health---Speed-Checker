@@ -1,0 +1,249 @@
+/* ui/src/App.css */
+/* Tailwind CSS imports */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Global styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #030712;
+  color: #f3f4f6;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Utility classes */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Score indicators */
+.score-ring {
+  stroke-dasharray: 314;
+  stroke-dashoffset: calc(314 - (314 * var(--score)) / 100);
+  transition: stroke-dashoffset 1s ease-out;
+}
+
+/* Progress bar */
+.progress-bar {
+  background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%);
+  transition: width 0.3s ease-out;
+}
+
+/* Issue severity badges */
+.severity-critical {
+  @apply bg-red-500/10 text-red-500 border-red-500/20;
+}
+
+.severity-warning {
+  @apply bg-yellow-500/10 text-yellow-500 border-yellow-500/20;
+}
+
+.severity-info {
+  @apply bg-blue-500/10 text-blue-500 border-blue-500/20;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors;
+}
+
+.btn-danger {
+  @apply px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition-colors;
+}
+
+/* Card styles */
+.card {
+  @apply bg-gray-900 rounded-xl p-6 border border-gray-800;
+}
+
+.card-hover {
+  @apply hover:bg-gray-800 hover:border-gray-700 transition-all cursor-pointer;
+}
+
+/* Tab styles */
+.tab {
+  @apply pb-3 px-1 border-b-2 transition-colors;
+}
+
+.tab-active {
+  @apply border-blue-500 text-blue-500;
+}
+
+.tab-inactive {
+  @apply border-transparent text-gray-400 hover:text-white;
+}
+
+/* Status indicators */
+.status-healthy {
+  @apply text-green-500;
+}
+
+.status-warning {
+  @apply text-yellow-500;
+}
+
+.status-critical {
+  @apply text-red-500;
+}
+
+/* Tooltip */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 text-xs text-white bg-gray-800 rounded shadow-lg;
+}
+
+/* Loading states */
+.skeleton {
+  @apply animate-pulse bg-gray-800 rounded;
+}
+
+.spinner {
+  border: 2px solid #1f2937;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Grid layouts */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.issues-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hide-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-lg {
+    max-width: 1024px;
+    margin: 0 auto;
+  }
+}
+
+/* Dark mode overrides (if needed) */
+@media (prefers-color-scheme: dark) {
+  /* Already dark by default */
+}
+
+/* Print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .no-print {
+    display: none;
+  }
+}
+
+/* Focus styles for accessibility */
+*:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Transitions */
+.transition-fast {
+  transition: all 0.15s ease-out;
+}
+
+.transition-normal {
+  transition: all 0.3s ease-out;
+}
+
+.transition-slow {
+  transition: all 0.5s ease-out;
+}

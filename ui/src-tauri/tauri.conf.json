@@ -1,0 +1,140 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist",
+    "withGlobalTauri": true
+  },
+  "package": {
+    "productName": "Health & Speed Checker",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "writeFile": true,
+        "readDir": true,
+        "createDir": true,
+        "removeDir": false,
+        "removeFile": false,
+        "exists": true,
+        "scope": ["$APPDATA", "$APPDATA/**", "$RESOURCE/**"]
+      },
+      "path": {
+        "all": true
+      },
+      "process": {
+        "all": false,
+        "exit": true,
+        "relaunch": true
+      },
+      "protocol": {
+        "all": false,
+        "asset": true,
+        "assetScope": ["**"]
+      },
+      "notification": {
+        "all": true
+      },
+      "clipboard": {
+        "all": false,
+        "writeText": true,
+        "readText": false
+      },
+      "dialog": {
+        "all": false,
+        "open": false,
+        "save": true,
+        "message": true,
+        "ask": true,
+        "confirm": true
+      },
+      "http": {
+        "all": false,
+        "request": false,
+        "scope": []
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "Utility",
+      "copyright": "© 2024 Health & Speed Checker",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.healthspeedchecker.app",
+      "longDescription": "A privacy-first, local-only PC health and performance analyzer that helps you understand and fix system issues.",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Privacy-first PC health checker",
+      "targets": ["msi", "deb", "appimage", "dmg"],
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "wix": {
+          "language": "en-US",
+          "bannerPath": null,
+          "dialogImagePath": null,
+          "license": null
+        }
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://localhost:*; connect-src 'self' ipc: tauri: https://localhost:*"
+    },
+    "updater": {
+      "active": false,
+      "endpoints": [],
+      "dialog": true,
+      "pubkey": ""
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 720,
+        "resizable": true,
+        "title": "Health & Speed Checker",
+        "width": 1080,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "fileDropEnabled": false,
+        "transparent": false,
+        "theme": null,
+        "titleBarStyle": "Visible"
+      }
+    ],
+    "systemTray": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    }
+  }
+}

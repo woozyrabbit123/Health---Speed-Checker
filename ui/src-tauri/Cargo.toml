@@ -1,0 +1,39 @@
+[package]
+name = "health-speed-checker-ui"
+version = "0.1.0"
+description = "Health & Speed Checker Desktop Application"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+repository = "https://github.com/yourusername/health-speed-checker"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+# Reference to our core agent library
+health_speed_checker = { path = "../../agent" }
+
+# Tauri
+tauri = { version = "1.5", features = ["shell-open", "dialog-all", "fs-all", "notification-all", "path-all", "process-exit", "process-relaunch", "clipboard-write-text"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+[features]
+# By default, Tauri runs in production mode when you build
+default = ["custom-protocol"]
+# This feature is used for production builds where `devPath` points to the filesystem
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,0 +1,34 @@
+{
+  "name": "health-speed-checker",
+  "version": "0.1.0",
+  "description": "Privacy-first PC health and speed checker",
+  "private": true,
+  "scripts": {
+    "dev": "cd ui && npm run tauri:dev",
+    "build": "cd agent && cargo build --release && cd ../ui && npm run tauri:build",
+    "test": "cd agent && cargo test && cd ../ui && npm test",
+    "lint": "cd agent && cargo clippy && cd ../ui && npm run lint",
+    "format": "cd agent && cargo fmt && cd ../ui && prettier --write \"src/**/*.{ts,tsx}\"",
+    "install-deps": "cd ui && npm install",
+    "clean": "cd agent && cargo clean && cd ../ui && rm -rf node_modules dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/health-speed-checker.git"
+  },
+  "keywords": [
+    "security",
+    "performance",
+    "system-checker",
+    "privacy",
+    "tauri",
+    "rust",
+    "desktop-app"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/yourusername/health-speed-checker/issues"
+  },
+  "homepage": "https://github.com/yourusername/health-speed-checker#readme"
+}
