@@ -1,11 +1,8 @@
 // agent/src/lib.rs
 // Core library for Health & Speed Checker
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 // ============================================================================
 // CORE DATA TYPES (Frozen v1 API)
@@ -222,17 +219,16 @@ pub enum CheckCategory {
 
 pub struct ScanContext {
     pub options: ScanOptions,
-    pub progress_sender: Option<tokio::sync::mpsc::Sender<ProgressEvent>>,
+    // TODO: Add progress reporting when needed
 }
 
-#[async_trait]
 pub trait Checker: Send + Sync {
     fn name(&self) -> &'static str;
     fn category(&self) -> CheckCategory;
 
-    async fn run(&self, context: &ScanContext) -> Vec<Issue>;
+    fn run(&self, context: &ScanContext) -> Vec<Issue>;
 
-    async fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
+    fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
         Err(format!("Fix not implemented for {}", issue_id))
     }
 }
@@ -258,14 +254,13 @@ impl ScannerEngine {
         self.checkers.push(checker);
     }
 
-    pub async fn scan(&self, options: ScanOptions) -> ScanResult {
+    pub fn scan(&self, options: ScanOptions) -> ScanResult {
         let scan_id = uuid::Uuid::new_v4().to_string();
         let start_time = std::time::Instant::now();
         let timestamp = chrono::Utc::now().timestamp() as u64;
 
         let context = ScanContext {
             options: options.clone(),
-            progress_sender: None, // TODO: Wire up progress events
         };
 
         let mut all_issues = Vec::new();
@@ -279,7 +274,7 @@ impl ScannerEngine {
             };
 
             if should_run {
-                let issues = checker.run(&context).await;
+                let issues = checker.run(&context);
                 all_issues.extend(issues);
             }
         }
@@ -336,10 +331,10 @@ impl ScannerEngine {
         }
     }
 
-    pub async fn fix_issue(&self, action_id: &str, params: &serde_json::Value) -> FixResult {
+    pub fn fix_issue(&self, action_id: &str, params: &serde_json::Value) -> FixResult {
         // Find the checker that can handle this fix
         for checker in &self.checkers {
-            if let Ok(result) = checker.fix(action_id, params).await {
+            if let Ok(result) = checker.fix(action_id, params) {
                 return result;
             }
         }
@@ -409,7 +404,6 @@ impl ScoringEngine {
 }
 
 // Re-export commonly used dependencies
-pub use async_trait::async_trait;
 pub use serde_json;
 pub use uuid;
 
