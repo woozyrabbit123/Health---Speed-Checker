@@ -7,11 +7,23 @@ pub mod process;
 pub mod os_update;
 pub mod ports;
 
+// New checker modules
+pub mod bloatware;
+pub mod network;
+pub mod smart_disk;
+pub mod storage;
+
 pub use firewall::FirewallChecker;
 pub use startup::StartupAnalyzer;
 pub use process::ProcessMonitor;
 pub use os_update::OsUpdateChecker;
 pub use ports::PortScanner;
+
+// Export new checkers
+pub use bloatware::BloatwareDetector;
+pub use network::NetworkChecker;
+pub use smart_disk::SmartDiskChecker;
+pub use storage::StorageChecker;
 
 // =============================================================================
 // FIREWALL CHECKER
@@ -19,11 +31,9 @@ pub use ports::PortScanner;
 
 pub mod firewall {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct FirewallChecker;
 
-    #[async_trait]
     impl Checker for FirewallChecker {
         fn name(&self) -> &'static str {
             "firewall_checker"
@@ -33,12 +43,12 @@ pub mod firewall {
             CheckCategory::Security
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             #[cfg(target_os = "windows")]
             {
-                if let Ok(is_enabled) = check_windows_firewall().await {
+                if let Ok(is_enabled) = check_windows_firewall() {
                     if !is_enabled {
                         issues.push(Issue {
                             id: "firewall_disabled".to_string(),
@@ -60,11 +70,11 @@ pub mod firewall {
             issues
         }
 
-        async fn fix(&self, issue_id: &str, _params: &serde_json::Value) -> Result<FixResult, String> {
+        fn fix(&self, issue_id: &str, _params: &serde_json::Value) -> Result<FixResult, String> {
             if issue_id == "enable_firewall" {
                 #[cfg(target_os = "windows")]
                 {
-                    enable_windows_firewall().await?;
+                    enable_windows_firewall()?;
                     return Ok(FixResult::success("Windows Firewall enabled successfully"));
                 }
 
@@ -77,7 +87,7 @@ pub mod firewall {
     }
 
     #[cfg(target_os = "windows")]
-    async fn check_windows_firewall() -> Result<bool, String> {
+    fn check_windows_firewall() -> Result<bool, String> {
         use std::process::Command;
 
         let output = Command::new("netsh")
@@ -90,7 +100,7 @@ pub mod firewall {
     }
 
     #[cfg(target_os = "windows")]
-    async fn enable_windows_firewall() -> Result<(), String> {
+    fn enable_windows_firewall() -> Result<(), String> {
         use std::process::Command;
 
         Command::new("netsh")
@@ -108,11 +118,9 @@ pub mod firewall {
 
 pub mod startup {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct StartupAnalyzer;
 
-    #[async_trait]
     impl Checker for StartupAnalyzer {
         fn name(&self) -> &'static str {
             "startup_analyzer"
@@ -122,14 +130,14 @@ pub mod startup {
             CheckCategory::Performance
         }
 
-        async fn run(&self, context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             if context.options.exclude_startup {
                 return issues;
             }
 
-            let startup_items = get_startup_items().await.unwrap_or_default();
+            let startup_items = get_startup_items().unwrap_or_default();
 
             if startup_items.len() > 15 {
                 issues.push(Issue {
@@ -179,7 +187,7 @@ pub mod startup {
         }
     }
 
-    async fn get_startup_items() -> Result<Vec<StartupItem>, String> {
+    fn get_startup_items() -> Result<Vec<StartupItem>, String> {
         let mut items = Vec::new();
 
         #[cfg(target_os = "windows")]
@@ -230,11 +238,9 @@ pub mod startup {
 
 pub mod process {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct ProcessMonitor;
 
-    #[async_trait]
     impl Checker for ProcessMonitor {
         fn name(&self) -> &'static str {
             "process_monitor"
@@ -244,10 +250,10 @@ pub mod process {
             CheckCategory::Performance
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
-            if let Ok(top_processes) = get_top_cpu_processes(5).await {
+            if let Ok(top_processes) = get_top_cpu_processes(5) {
                 for process in top_processes {
                     if process.cpu_percent > 50.0 && !is_system_process(&process.name) {
                         issues.push(Issue {
@@ -298,7 +304,7 @@ pub mod process {
         }
     }
 
-    async fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
+    fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
         let mut processes = Vec::new();
 
         #[cfg(target_os = "windows")]
@@ -375,11 +381,9 @@ pub mod process {
 
 pub mod os_update {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct OsUpdateChecker;
 
-    #[async_trait]
     impl Checker for OsUpdateChecker {
         fn name(&self) -> &'static str {
             "os_update_checker"
@@ -389,12 +393,12 @@ pub mod os_update {
             CheckCategory::Security
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             #[cfg(target_os = "windows")]
             {
-                if let Ok(update_status) = check_windows_updates().await {
+                if let Ok(update_status) = check_windows_updates() {
                     if update_status.pending_updates > 0 {
                         let severity = if update_status.pending_updates > 5 {
                             IssueSeverity::Critical
@@ -426,7 +430,7 @@ pub mod os_update {
     }
 
     #[cfg(target_os = "windows")]
-    async fn check_windows_updates() -> Result<OsUpdateStatus, String> {
+    fn check_windows_updates() -> Result<OsUpdateStatus, String> {
         use std::process::Command;
 
         // This is a simplified check - real implementation would use Windows Update API
@@ -440,14 +444,14 @@ pub mod os_update {
 
         Ok(OsUpdateStatus {
             is_current: update_count == 0,
-            current_build: get_windows_build().await.unwrap_or_else(|_| "Unknown".to_string()),
+            current_build: get_windows_build().unwrap_or_else(|_| "Unknown".to_string()),
             latest_build: None,
             pending_updates: if update_count == 0 { 0 } else { 3 }, // Simplified
         })
     }
 
     #[cfg(target_os = "windows")]
-    async fn get_windows_build() -> Result<String, String> {
+    fn get_windows_build() -> Result<String, String> {
         use std::process::Command;
 
         let output = Command::new("cmd")
@@ -465,12 +469,10 @@ pub mod os_update {
 
 pub mod ports {
     use crate::*;
-    use async_trait::async_trait;
     use std::collections::HashSet;
 
     pub struct PortScanner;
 
-    #[async_trait]
     impl Checker for PortScanner {
         fn name(&self) -> &'static str {
             "port_scanner"
@@ -480,7 +482,7 @@ pub mod ports {
             CheckCategory::Security
         }
 
-        async fn run(&self, context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             if context.options.quick {
@@ -488,7 +490,7 @@ pub mod ports {
                 return issues;
             }
 
-            if let Ok(open_ports) = scan_open_ports().await {
+            if let Ok(open_ports) = scan_open_ports() {
                 for port_info in open_ports {
                     if is_risky_port(&port_info) && !is_whitelisted_port(&port_info) {
                         issues.push(Issue {
@@ -523,7 +525,7 @@ pub mod ports {
         }
     }
 
-    async fn scan_open_ports() -> Result<Vec<PortInfo>, String> {
+    fn scan_open_ports() -> Result<Vec<PortInfo>, String> {
         let mut ports = Vec::new();
 
         #[cfg(target_os = "windows")]
