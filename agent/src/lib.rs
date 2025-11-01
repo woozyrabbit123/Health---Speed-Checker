@@ -328,7 +328,7 @@ pub trait Checker: Send + Sync {
     /// * `Err(String)` - Fix not implemented or invalid issue_id
     ///
     /// Default implementation returns "not implemented" error.
-    fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
+    fn fix(&self, issue_id: &str, _params: &serde_json::Value) -> Result<FixResult, String> {
         Err(format!("Fix not implemented for {}", issue_id))
     }
 }
@@ -373,6 +373,117 @@ impl ScannerEngine {
     /// Checkers are run in the order they are registered.
     pub fn register(&mut self, checker: Box<dyn Checker>) {
         self.checkers.push(checker);
+    }
+
+    /// Map checker name to license feature
+    fn checker_to_feature(checker_name: &str) -> Option<crate::license::Feature> {
+        use crate::license::Feature;
+
+        match checker_name {
+            "firewall" => Some(Feature::FirewallChecker),
+            "startup" => Some(Feature::StartupAnalyzer),
+            "process_monitor" => Some(Feature::ProcessMonitor),
+            "os_update" => Some(Feature::OsUpdateChecker),
+            "port_scanner" => Some(Feature::PortScanner),
+            "bloatware" => Some(Feature::BloatwareDetector),
+            "network" => Some(Feature::NetworkChecker),
+            "smart_disk" => Some(Feature::SmartDiskChecker),
+            "storage" => Some(Feature::StorageChecker),
+            _ => None,
+        }
+    }
+
+    /// Check if a checker is allowed by the license
+    fn is_checker_allowed(&self, checker: &dyn Checker, license: &crate::license::License) -> bool {
+        if let Some(feature) = Self::checker_to_feature(checker.name()) {
+            license.has_feature(feature)
+        } else {
+            // Unknown checker - allow by default
+            true
+        }
+    }
+
+    /// Run a full system scan with the specified options and license check.
+    ///
+    /// This version respects license tier limitations (Free/Trial/Pro).
+    /// Only checkers allowed by the license will be executed.
+    pub fn scan_with_license(&self, options: ScanOptions, license: &crate::license::License) -> ScanResult {
+        let scan_id = uuid::Uuid::new_v4().to_string();
+        let start_time = std::time::Instant::now();
+        let timestamp = chrono::Utc::now().timestamp() as u64;
+
+        let context = ScanContext {
+            options: options.clone(),
+        };
+
+        let mut all_issues = Vec::new();
+
+        // Run checkers that are both enabled by options AND allowed by license
+        for checker in &self.checkers {
+            let category_enabled = match checker.category() {
+                CheckCategory::Security => options.security,
+                CheckCategory::Performance => options.performance,
+                _ => true,
+            };
+
+            let license_allowed = self.is_checker_allowed(checker.as_ref(), license);
+
+            if category_enabled && license_allowed {
+                let issues = checker.run(&context);
+                all_issues.extend(issues);
+            }
+        }
+
+        // Sort issues by priority
+        all_issues.sort_by_key(|issue| {
+            let severity_score = match issue.severity {
+                IssueSeverity::Critical => 0,
+                IssueSeverity::Warning => 1,
+                IssueSeverity::Info => 2,
+            };
+            severity_score
+        });
+
+        // Calculate scores
+        let scores = self.scoring_engine.calculate_scores(&all_issues);
+
+        // Build result
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+
+        ScanResult {
+            scan_id,
+            timestamp,
+            duration_ms,
+            scores,
+            issues: all_issues,
+            details: ScanDetails {
+                security: SecurityDetails {
+                    os_update_status: OsUpdateStatus {
+                        is_current: true,
+                        current_build: "Unknown".to_string(),
+                        latest_build: None,
+                        pending_updates: 0,
+                    },
+                    firewall_status: FirewallStatus {
+                        is_active: true,
+                        provider: "Unknown".to_string(),
+                    },
+                    open_ports: vec![],
+                    vulnerable_apps: vec![],
+                },
+                performance: PerformanceDetails {
+                    system_metrics: SystemMetrics {
+                        cpu_usage: 0.0,
+                        memory_used_gb: 0.0,
+                        memory_total_gb: 16.0,
+                        disk_used_gb: 0.0,
+                        disk_total_gb: 256.0,
+                    },
+                    top_processes: vec![],
+                    startup_items: vec![],
+                },
+            },
+        }
     }
 
     /// Run a full system scan with the specified options.
@@ -561,3 +672,10 @@ pub use uuid;
 
 // Export checker modules
 pub mod checkers;
+pub mod db;
+pub mod daemon;
+pub mod license;
+// Utilities
+pub mod util {
+    pub mod command;
+}

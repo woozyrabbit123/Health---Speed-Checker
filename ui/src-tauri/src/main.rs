@@ -7,7 +7,9 @@
 )]
 
 use health_speed_checker::*;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::State;
@@ -21,6 +23,8 @@ mod tray;
 pub struct AppState {
     scanner_engine: Arc<Mutex<ScannerEngine>>,
     current_scan: Arc<Mutex<Option<ScanResult>>>,
+    license_manager: Arc<Mutex<license::LicenseManager>>,
+    db_path: PathBuf,
 }
 
 impl AppState {
@@ -40,9 +44,40 @@ impl AppState {
         engine.register(Box::new(checkers::SmartDiskChecker::new()));
         engine.register(Box::new(checkers::StorageChecker::new()));
 
+        // The "Trust Builder" - honest hardware bottleneck analysis
+        engine.register(Box::new(checkers::BottleneckAnalyzer::new()));
+
+        // Initialize license manager with app data directory
+        let license_path = std::env::var("APPDATA")
+            .or_else(|_| std::env::var("HOME"))
+            .map(|dir| {
+                let mut path = std::path::PathBuf::from(dir);
+                path.push("HealthSpeedChecker");
+                path.push("license.json");
+                path
+            })
+            .unwrap_or_else(|_| std::path::PathBuf::from("license.json"));
+
+        let license_manager = license::LicenseManager::new(license_path.clone());
+
+        // Derive DB path from the same app data directory
+        let db_path = license_path
+            .parent()
+            .map(|p| p.join("app.db"))
+            .unwrap_or_else(|| PathBuf::from("app.db"));
+
+        if let Some(dir) = db_path.parent() { let _ = std::fs::create_dir_all(dir); }
+
+        let _ = health_speed_checker::daemon::start_automation_daemon(
+            db_path.clone(),
+            license_path.clone(),
+        );
+
         Self {
             scanner_engine: Arc::new(Mutex::new(engine)),
             current_scan: Arc::new(Mutex::new(None)),
+            license_manager: Arc::new(Mutex::new(license_manager)),
+            db_path,
         }
     }
 }
@@ -58,14 +93,32 @@ async fn scan_start(
 ) -> Result<String, String> {
     tracing::info!("Starting scan with options: {:?}", options);
 
-    let mut engine = state.scanner_engine.lock().await;
-    let result = engine.scan(options);
+    // Load current license
+    let license_mgr = state.license_manager.lock().await;
+    let license = license_mgr.load().unwrap_or_default();
+    drop(license_mgr);
+
+    // Run scan with license check
+    let engine = state.scanner_engine.lock().await;
+    let result = engine.scan_with_license(options, &license);
 
     let scan_id = result.scan_id.clone();
 
     // Store the result
     let mut current_scan = state.current_scan.lock().await;
     *current_scan = Some(result);
+    let stored = current_scan.clone();
+    let db_path = state.db_path.clone();
+
+    // Persist asynchronously to SQLite to avoid blocking the UI thread
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(res) = stored.as_ref() {
+            let path_str = db_path.to_string_lossy().to_string();
+            if let Ok(db) = health_speed_checker::db::Db::open(&path_str) {
+                let _ = db.save_scan(res);
+            }
+        }
+    });
 
     tracing::info!("Scan completed: {}", scan_id);
     Ok(scan_id)
@@ -95,6 +148,12 @@ async fn fix_action(
 ) -> Result<FixResult, String> {
     tracing::info!("Executing fix action: {}", action_id);
 
+    // Require explicit confirmation flag for potentially destructive operations
+    let confirmed = params.get("confirm").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !confirmed {
+        return Err("Confirmation required: pass { \"confirm\": true } in params to proceed".to_string());
+    }
+
     let engine = state.scanner_engine.lock().await;
     let result = engine.fix_issue(&action_id, &params);
 
@@ -117,11 +176,23 @@ async fn get_system_info() -> Result<SystemInfo, String> {
 }
 
 #[tauri::command]
-async fn get_scan_history() -> Result<Vec<ScanHistoryItem>, String> {
+async fn get_scan_history(state: State<'_, AppState>) -> Result<Vec<ScanHistoryItem>, String> {
     tracing::info!("Retrieving scan history");
 
-    // TODO: Implement database query
-    Ok(vec![])
+    let db_path = state.db_path.clone();
+    let items = tauri::async_runtime::spawn_blocking(move || {
+        let db = health_speed_checker::db::Db::open(&db_path.to_string_lossy()).map_err(|e| e.to_string())?;
+        let rows = db.recent_scans(10).map_err(|e| e.to_string())?;
+        let mapped: Vec<ScanHistoryItem> = rows
+            .into_iter()
+            .map(|s| ScanHistoryItem { scan_id: s.scan_id, timestamp: s.timestamp, health_score: s.health, speed_score: s.speed })
+            .collect();
+        Ok::<_, String>(mapped)
+    })
+    .await
+    .map_err(|e| format!("Join error: {}", e))??;
+
+    Ok(items)
 }
 
 #[derive(Debug, Deserialize)]
@@ -594,6 +665,116 @@ fn get_os_version() -> String {
 }
 
 // ============================================================================
+// LICENSE MANAGEMENT COMMANDS
+// ============================================================================
+
+/// Get the current license status
+#[tauri::command]
+async fn get_license_status(
+    state: State<'_, AppState>,
+) -> Result<license::License, String> {
+    tracing::info!("Getting license status");
+
+    let license_mgr = state.license_manager.lock().await;
+    let license = license_mgr.load().unwrap_or_default();
+
+    Ok(license)
+}
+
+/// Activate a Pro license with a key
+#[tauri::command]
+async fn activate_license(
+    key: String,
+    state: State<'_, AppState>,
+) -> Result<license::License, String> {
+    tracing::info!("Activating license with key: {}****", &key[..key.len().min(8)]);
+
+    let license_mgr = state.license_manager.lock().await;
+    let license = license_mgr.activate_pro(&key)?;
+
+    tracing::info!("License activated successfully");
+    Ok(license)
+}
+
+/// Start a 14-day trial
+#[tauri::command]
+async fn start_trial(
+    state: State<'_, AppState>,
+) -> Result<license::License, String> {
+    tracing::info!("Starting trial period");
+
+    let license_mgr = state.license_manager.lock().await;
+    let license = license_mgr.start_trial()?;
+
+    tracing::info!("Trial started successfully");
+    Ok(license)
+}
+
+#[tauri::command]
+async fn get_automation_settings(
+    state: State<'_, AppState>,
+) -> Result<db::AutomationSettings, String> {
+    let db_path = state.db_path.to_string_lossy().to_string();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = health_speed_checker::db::Db::open(&db_path)?;
+        db.get_automation_settings()
+    })
+    .await
+    .map_err(|e| format!("automation settings task failed: {}", e))?
+}
+
+#[tauri::command]
+async fn set_automation_settings(
+    settings: db::AutomationSettings,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let db_path = state.db_path.to_string_lossy().to_string();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = health_speed_checker::db::Db::open(&db_path)?;
+        db.set_automation_settings(&settings)?;
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("automation settings task failed: {}", e))??;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_changelog(
+    state: State<'_, AppState>,
+) -> Result<Vec<db::ChangelogEntry>, String> {
+    let db_path = state.db_path.to_string_lossy().to_string();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = health_speed_checker::db::Db::open(&db_path)?;
+        db.get_changelog_entries()
+    })
+    .await
+    .map_err(|e| format!("changelog task failed: {}", e))?
+}
+
+/// Check if a specific feature is available
+#[tauri::command]
+async fn check_feature_access(
+    feature_name: String,
+    state: State<'_, AppState>,
+) -> Result<bool, String> {
+    let license_mgr = state.license_manager.lock().await;
+    let license = license_mgr.load().unwrap_or_default();
+
+    let has_access = if feature_name.eq_ignore_ascii_case("automation") {
+        license.has_pro_feature(license::ProFeature::Automation)
+    } else {
+        true
+    };
+
+    Ok(has_access)
+}
+
+// ============================================================================
 // MAIN APPLICATION
 // ============================================================================
 
@@ -615,6 +796,13 @@ fn main() {
             get_system_info,
             get_scan_history,
             export_report,
+            get_license_status,
+            activate_license,
+            start_trial,
+            get_automation_settings,
+            set_automation_settings,
+            get_changelog,
+            check_feature_access,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

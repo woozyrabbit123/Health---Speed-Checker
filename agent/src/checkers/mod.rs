@@ -6,12 +6,14 @@ pub mod bloatware;
 pub mod network;
 pub mod smart_disk;
 pub mod storage;
+pub mod bottleneck;  // The "Trust Builder" - honest bottleneck analysis
 
 // Export new checkers
 pub use bloatware::BloatwareDetector;
 pub use network::NetworkChecker;
 pub use smart_disk::SmartDiskChecker;
 pub use storage::StorageChecker;
+pub use bottleneck::BottleneckAnalyzer;
 
 // Inline checker modules (defined below)
 pub use firewall::FirewallChecker;
@@ -84,11 +86,14 @@ pub mod firewall {
     #[cfg(target_os = "windows")]
     fn check_windows_firewall() -> Result<bool, String> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
-        let output = Command::new("netsh")
-            .args(&["advfirewall", "show", "currentprofile", "state"])
-            .output()
-            .map_err(|e| format!("Failed to check firewall: {}", e))?;
+        let output = run_with_timeout({
+            let mut c = Command::new("netsh");
+            c.args(["advfirewall", "show", "currentprofile", "state"]);
+            c
+        }, Duration::from_secs(5)).map_err(|e| format!("Failed to check firewall: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.contains("ON"))
@@ -97,11 +102,14 @@ pub mod firewall {
     #[cfg(target_os = "windows")]
     fn enable_windows_firewall() -> Result<(), String> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
-        Command::new("netsh")
-            .args(&["advfirewall", "set", "currentprofile", "state", "on"])
-            .output()
-            .map_err(|e| format!("Failed to enable firewall: {}", e))?;
+        run_with_timeout({
+            let mut c = Command::new("netsh");
+            c.args(["advfirewall", "set", "currentprofile", "state", "on"]);
+            c
+        }, Duration::from_secs(5)).map_err(|e| format!("Failed to enable firewall: {}", e))?;
 
         Ok(())
     }
@@ -188,12 +196,15 @@ pub mod startup {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::time::Duration;
+            use crate::util::command::run_with_timeout;
 
             // Check registry startup items
-            let output = Command::new("wmic")
-                .args(&["startup", "get", "name,command", "/format:csv"])
-                .output()
-                .map_err(|e| format!("Failed to get startup items: {}", e))?;
+            let output = run_with_timeout({
+                let mut c = Command::new("wmic");
+                c.args(["startup", "get", "name,command", "/format:csv"]);
+                c
+            }, Duration::from_secs(5)).map_err(|e| format!("Failed to get startup items: {}", e))?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines().skip(2) {
@@ -249,7 +260,7 @@ pub mod process {
             let mut issues = Vec::new();
 
             if let Ok(top_processes) = get_top_cpu_processes(5) {
-                for process in top_processes {
+                for process in &top_processes {
                     if process.cpu_percent > 50.0 && !is_system_process(&process.name) {
                         issues.push(Issue {
                             id: format!("high_cpu_{}", sanitize_id(&process.name)),
@@ -300,7 +311,7 @@ pub mod process {
     }
 
     fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
-        use sysinfo::{ProcessExt, System, SystemExt};
+        use sysinfo::System;
 
         let mut sys = System::new_all();
 
@@ -512,11 +523,14 @@ pub mod ports {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::time::Duration;
+            use crate::util::command::run_with_timeout;
 
-            let output = Command::new("netstat")
-                .args(&["-an"])
-                .output()
-                .map_err(|e| format!("Failed to scan ports: {}", e))?;
+            let output = run_with_timeout({
+                let mut c = Command::new("netstat");
+                c.args(["-an"]);
+                c
+            }, Duration::from_secs(5)).map_err(|e| format!("Failed to scan ports: {}", e))?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
 

@@ -2,8 +2,9 @@
 // Tests internet speed, latency, and connection stability
 
 use crate::{Checker, CheckCategory, Issue, IssueSeverity, ImpactCategory, ScanContext, FixAction};
-use std::time::{Duration, Instant};
+use std::io::Read;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::time::{Duration, Instant};
 
 pub struct NetworkChecker;
 
@@ -59,11 +60,13 @@ impl NetworkChecker {
             Ok(response) => {
                 let mut bytes_downloaded = 0usize;
                 let mut buffer = vec![0u8; 8192]; // 8KB buffer
+                let mut reader = response.into_reader();
 
-                if let Ok(mut reader) = response.into_reader().into() {
-                    while let Ok(n) = std::io::Read::read(&mut reader, &mut buffer) {
-                        if n == 0 { break; }
-                        bytes_downloaded += n;
+                loop {
+                    match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(n) => bytes_downloaded += n,
+                        Err(_) => break,
                     }
                 }
 
@@ -319,9 +322,13 @@ impl Checker for NetworkChecker {
                     let adapter_name = self.get_active_network_adapter()
                         .ok_or_else(|| "Could not detect active network adapter".to_string())?;
 
-                    // Set DNS to Cloudflare (1.1.1.1) using netsh
-                    let output = Command::new("netsh")
-                        .args(&[
+                    use std::time::Duration;
+                    use crate::util::command::run_with_timeout;
+
+                    // Set DNS to Cloudflare (1.1.1.1) using netsh with timeout
+                    let output = run_with_timeout({
+                        let mut c = Command::new("netsh");
+                        c.args([
                             "interface",
                             "ip",
                             "set",
@@ -330,9 +337,10 @@ impl Checker for NetworkChecker {
                             "static",
                             "1.1.1.1",
                             "primary",
-                        ])
-                        .output()
-                        .map_err(|e| format!("Failed to set DNS: {}. You may need administrator privileges.", e))?;
+                        ]);
+                        c
+                    }, Duration::from_secs(5))
+                    .map_err(|e| format!("Failed to set DNS: {}. You may need administrator privileges.", e))?;
 
                     if !output.status.success() {
                         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -340,8 +348,9 @@ impl Checker for NetworkChecker {
                     }
 
                     // Add secondary DNS (1.0.0.1)
-                    let _ = Command::new("netsh")
-                        .args(&[
+                    let _ = run_with_timeout({
+                        let mut c = Command::new("netsh");
+                        c.args([
                             "interface",
                             "ip",
                             "add",
@@ -349,8 +358,9 @@ impl Checker for NetworkChecker {
                             &format!("name=\"{}\"", adapter_name),
                             "1.0.0.1",
                             "index=2",
-                        ])
-                        .output();
+                        ]);
+                        c
+                    }, Duration::from_secs(5));
 
                     Ok(crate::FixResult {
                         success: true,

@@ -73,6 +73,21 @@ INSERT OR IGNORE INTO user_config (key, value, description) VALUES
     ('log_level', 'info', 'Logging level: debug, info, warn, error');
 
 -- ============================================================================
+-- AUTOMATION SETTINGS
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    automation_enabled BOOLEAN NOT NULL DEFAULT 0,
+    run_schedule TEXT NOT NULL DEFAULT 'weekly' CHECK (run_schedule IN ('daily', 'weekly', 'monthly')),
+    auto_fix_enabled BOOLEAN NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT OR IGNORE INTO settings (id, automation_enabled, run_schedule, auto_fix_enabled)
+VALUES (1, 0, 'weekly', 0);
+
+-- ============================================================================
 -- FIX HISTORY (AUDIT TRAIL)
 -- ============================================================================
 

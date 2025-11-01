@@ -1,0 +1,119 @@
+    Finished `release` profile [optimized] target(s) in 0.27s
+     Running `target\release\health-checker.exe scan --output json`
+{
+  "scan_id": "495ab799-3abe-407f-a706-3104c91cce6a",
+  "timestamp": 1762020621,
+  "duration_ms": 5100,
+  "scores": {
+    "health": 80,
+    "speed": 58,
+    "health_delta": null,
+    "speed_delta": null
+  },
+  "issues": [
+    {
+      "id": "port_open_445",
+      "severity": "Warning",
+      "title": "Port 445 (SMB) is open",
+      "description": "SMB file sharing is exposed. This can allow network access to your files.",
+      "impact_category": "Security",
+      "fix": {
+        "action_id": "close_port_445",
+        "label": "Close Port",
+        "is_auto_fix": false,
+        "params": {
+          "port": 445,
+          "service": "SMB"
+        }
+      }
+    },
+    {
+      "id": "port_open_139",
+      "severity": "Warning",
+      "title": "Port 139 (Unknown) is open",
+      "description": "SMB file sharing is exposed. This can allow network access to your files.",
+      "impact_category": "Security",
+      "fix": {
+        "action_id": "close_port_139",
+        "label": "Close Port",
+        "is_auto_fix": false,
+        "params": {
+          "port": 139,
+          "service": null
+        }
+      }
+    },
+    {
+      "id": "bloatware_googledrive",
+      "severity": "Warning",
+      "title": "Unnecessary startup program: Google Drive sync",
+      "description": "Google Drive sync is set to run at startup. This may slow down your boot time and consume system resources. Consider disabling it if you don't need it running constantly.",
+      "impact_category": "Performance",
+      "fix": null
+    },
+    {
+      "id": "bloatware_task_nvidia",
+      "severity": "Warning",
+      "title": "Scheduled bloatware task: NVIDIA Ge Force Experience",
+      "description": "NVIDIA Ge Force Experience has scheduled tasks that run automatically. This may impact system performance.",
+      "impact_category": "Performance",
+      "fix": null
+    },
+    {
+      "id": "bottleneck_low_ram",
+      "severity": "Warning",
+      "title": "Low RAM Detected - 5GB is Below Modern Requirements",
+      "description": "Your system has 5GB of RAM. Modern applications (browsers, video calls, etc.) require 8GB minimum for smooth operation. You're currently using 4GB (80%).\n\nHONEST ASSESSMENT:\n- Closing background apps will help temporarily\n- But you'll constantly hit this limit\n- Adding more RAM is the permanent solution\n\nExpected improvement from RAM upgrade to 16GB:\n- Can run more apps simultaneously\n- Less disk swapping (which is very slow)\n- Better multitasking\n\nCost: $30-80 for 8GB RAM upgrade\nDifficulty: Easy (just plug it in, or pay tech $20-40)",
+      "impact_category": "Performance",
+      "fix": {
+        "action_id": "show_ram_guide",
+        "label": "Show RAM Upgrade Guide",
+        "is_auto_fix": false,
+        "params": {}
+      }
+    },
+    {
+      "id": "bloatware_steam",
+      "severity": "Info",
+      "title": "Unnecessary startup program: Steam auto-start",
+      "description": "Steam auto-start is set to run at startup. This may slow down your boot time and consume system resources. Consider disabling it if you don't need it running constantly.",
+      "impact_category": "Performance",
+      "fix": null
+    },
+    {
+      "id": "storage_temp_cleanup",
+      "severity": "Info",
+      "title": "Temporary Files May Need Cleanup",
+      "description": "Temporary files can accumulate over time. Run Disk Cleanup to free space.",
+      "impact_category": "Performance",
+      "fix": null
+    }
+  ],
+  "details": {
+    "security": {
+      "os_update_status": {
+        "is_current": true,
+        "current_build": "Unknown",
+        "latest_build": null,
+        "pending_updates": 0
+      },
+      "firewall_status": {
+        "is_active": true,
+        "provider": "Unknown"
+      },
+      "open_ports": [],
+      "vulnerable_apps": []
+    },
+    "performance": {
+      "system_metrics": {
+        "cpu_usage": 0.0,
+        "memory_used_gb": 0.0,
+        "memory_total_gb": 16.0,
+        "disk_used_gb": 0.0,
+        "disk_total_gb": 256.0
+      },
+      "top_processes": [],
+      "startup_items": []
+    }
+  }
+}
