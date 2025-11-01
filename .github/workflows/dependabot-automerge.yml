@@ -1,0 +1,87 @@
+name: 🤖 Dependabot Auto-Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  # ============================================================================
+  # AUTO-MERGE DEPENDABOT PRs
+  # ============================================================================
+  dependabot_automerge:
+    name: 🔄 Auto-Merge Dependencies
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Get Dependabot Metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Update Type
+        id: check_update
+        run: |
+          UPDATE_TYPE="${{ steps.metadata.outputs.update-type }}"
+
+          # Auto-approve patch and minor updates
+          if [[ "$UPDATE_TYPE" == "version-update:semver-patch" ]] || \
+             [[ "$UPDATE_TYPE" == "version-update:semver-minor" ]]; then
+            echo "should_merge=true" >> $GITHUB_OUTPUT
+            echo "reason=Safe $UPDATE_TYPE update" >> $GITHUB_OUTPUT
+          else
+            echo "should_merge=false" >> $GITHUB_OUTPUT
+            echo "reason=Major version update requires human review" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Approve PR
+        if: steps.check_update.outputs.should_merge == 'true'
+        run: |
+          gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Enable Auto-Merge
+        if: steps.check_update.outputs.should_merge == 'true'
+        run: |
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Comment on PR
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const shouldMerge = '${{ steps.check_update.outputs.should_merge }}';
+            const reason = '${{ steps.check_update.outputs.reason }}';
+
+            if (shouldMerge === 'true') {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `🤖 **Dependabot Auto-Merge Enabled**\n\n✅ ${reason}\n\nThis PR will merge automatically once all checks pass.\n\n---\n*Safe dependency updates are merged automatically to keep your project secure and up-to-date.*`
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `⚠️ **Manual Review Required**\n\n${reason}\n\nPlease review this PR manually before merging.`
+              });
+
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['👀 needs-human-review']
+              });
+            }

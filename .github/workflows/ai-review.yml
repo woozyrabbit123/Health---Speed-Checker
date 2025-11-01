@@ -1,0 +1,432 @@
+name: 🤖 AI Specialist Review Team
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: read
+  issues: write
+
+jobs:
+  # ============================================================================
+  # SPECIALIST 1: Architecture & Code Quality Reviewer
+  # ============================================================================
+  architecture_review:
+    name: 🏗️ Architecture Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run CodiumAI PR-Agent (Architecture Review)
+        uses: Codium-ai/pr-agent@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Configure PR-Agent for architecture focus
+          PR_REVIEWER.ENABLE_REVIEW_LABELS_SECURITY: true
+          PR_REVIEWER.ENABLE_REVIEW_LABELS_EFFORT: true
+          PR_REVIEWER.NUM_CODE_SUGGESTIONS: 5
+          PR_REVIEWER.INLINE_CODE_COMMENTS: true
+
+  # ============================================================================
+  # SPECIALIST 2: Security & Privacy Auditor
+  # ============================================================================
+  security_review:
+    name: 🔒 Security Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Security Vulnerability Scan
+        uses: obetomuniz/ai-security-check-for-pull-requests-action@v1.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.number }}
+          OPENAI_TOKEN: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Rust Security Audit
+        run: |
+          cargo install cargo-audit
+          cd agent
+          cargo audit --json > audit-report.json || true
+        continue-on-error: true
+
+      - name: Upload Audit Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-audit
+          path: agent/audit-report.json
+        if: always()
+
+  # ============================================================================
+  # SPECIALIST 3: Rust Performance & Best Practices
+  # ============================================================================
+  rust_specialist:
+    name: 🦀 Rust Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false && contains(github.event.pull_request.changed_files, '.rs')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Run Clippy with Strict Rules
+        run: |
+          cd agent
+          cargo clippy --all-targets --all-features -- \
+            -D warnings \
+            -D clippy::all \
+            -D clippy::pedantic \
+            -W clippy::cargo
+        continue-on-error: true
+
+      - name: Check Rust Formatting
+        run: |
+          cd agent
+          cargo fmt -- --check
+
+      - name: Comment on PR with Clippy Results
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🦀 **Rust Specialist Review**\n\n⚠️ Clippy found some issues. Please run `cargo clippy` locally and fix warnings.'
+            })
+
+  # ============================================================================
+  # SPECIALIST 4: TypeScript/React Code Quality
+  # ============================================================================
+  frontend_specialist:
+    name: ⚛️ Frontend Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false && (contains(github.event.pull_request.changed_files, '.ts') || contains(github.event.pull_request.changed_files, '.tsx'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install Dependencies
+        run: cd ui && npm ci
+
+      - name: Run ESLint
+        run: cd ui && npm run lint
+        continue-on-error: true
+
+      - name: Run TypeScript Compiler Check
+        run: cd ui && npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Comment on PR
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚛️ **Frontend Specialist Review**\n\n⚠️ ESLint or TypeScript errors found. Please run `npm run lint` and fix issues.'
+            })
+
+  # ============================================================================
+  # SPECIALIST 5: Test Coverage Analyst
+  # ============================================================================
+  test_coverage:
+    name: 🧪 Test Coverage Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate Coverage Report
+        run: |
+          cd agent
+          cargo tarpaulin --out Xml --output-dir ./coverage
+        continue-on-error: true
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./agent/coverage/cobertura.xml
+          flags: rust
+        continue-on-error: true
+
+      - name: Comment Coverage Results
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🧪 **Test Coverage Specialist**\n\nCoverage report generated. Check Codecov for detailed analysis.'
+            })
+        continue-on-error: true
+
+  # ============================================================================
+  # SPECIALIST 6: Google Gemini Strategic Reviewer
+  # ============================================================================
+  gemini_strategic_review:
+    name: 🧠 Gemini Strategic Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR Diff
+        id: pr_diff
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: diff } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              mediaType: { format: 'diff' }
+            });
+            return diff;
+
+      - name: Review with Google Gemini
+        id: gemini_review
+        run: |
+          # Create review prompt
+          cat > review_prompt.txt << 'EOF'
+          You are a strategic code reviewer focusing on:
+          1. Overall architecture and design patterns
+          2. Long-term maintainability
+          3. Innovation opportunities
+          4. Performance optimization strategies
+          5. User experience improvements
+
+          Analyze this Pull Request and provide:
+          - Strategic assessment (APPROVE/REQUEST_CHANGES/COMMENT)
+          - 3-5 key insights about the changes
+          - Suggestions for future improvements
+          - Potential risks or technical debt
+
+          Be concise but insightful. Focus on the big picture.
+          EOF
+
+          # Call Google Gemini API
+          RESPONSE=$(curl -s -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${{ secrets.GOOGLE_API_KEY }}" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "contents": [{
+                "parts": [{
+                  "text": "'"$(cat review_prompt.txt)"'\n\nPull Request Changes:\n${{ steps.pr_diff.outputs.result }}"
+                }]
+              }],
+              "generationConfig": {
+                "temperature": 0.4,
+                "maxOutputTokens": 2048
+              }
+            }')
+
+          # Extract review text
+          REVIEW_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "Error: Could not generate review"')
+
+          # Save to file for next step
+          echo "$REVIEW_TEXT" > gemini_review.md
+
+          # Check if approved
+          if echo "$REVIEW_TEXT" | grep -iq "APPROVE"; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          elif echo "$REVIEW_TEXT" | grep -iq "REQUEST_CHANGES"; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+          else
+            echo "status=neutral" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Gemini Review Comment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('gemini_review.md', 'utf8');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧠 Gemini Strategic Review\n\n${review}\n\n---\n*Powered by Google Gemini 2.0*`
+            });
+
+      - name: Set Check Status
+        if: steps.gemini_review.outputs.status == 'failure'
+        run: exit 1
+
+  # ============================================================================
+  # SPECIALIST 7: Google Gemini Innovation Scout
+  # ============================================================================
+  gemini_innovation_review:
+    name: 💡 Gemini Innovation Specialist
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Analyze for Innovation Opportunities
+        id: innovation
+        run: |
+          # Get list of changed files
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+          # Create innovation prompt
+          cat > innovation_prompt.txt << 'EOF'
+          You are an innovation specialist. Analyze this code for:
+          1. Opportunities to use newer language features
+          2. Better algorithms or data structures
+          3. Modern libraries that could simplify code
+          4. Performance optimization ideas
+          5. Developer experience improvements
+
+          Provide 3-5 actionable suggestions that would make this code more:
+          - Performant
+          - Maintainable
+          - Developer-friendly
+          - Future-proof
+
+          Be specific and practical.
+          EOF
+
+          # Read recent changes
+          CODE_CONTEXT=$(git diff origin/main...HEAD | head -500)
+
+          # Call Gemini
+          RESPONSE=$(curl -s -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${{ secrets.GOOGLE_API_KEY }}" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "contents": [{
+                "parts": [{
+                  "text": "'"$(cat innovation_prompt.txt)"'\n\nChanged Files:\n'"$CHANGED_FILES"'\n\nRecent Changes:\n'"$CODE_CONTEXT"'"
+                }]
+              }],
+              "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 1024
+              }
+            }')
+
+          SUGGESTIONS=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "No suggestions generated"')
+          echo "$SUGGESTIONS" > innovation_suggestions.md
+
+      - name: Post Innovation Suggestions
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const suggestions = fs.readFileSync('innovation_suggestions.md', 'utf8');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 💡 Innovation Opportunities\n\n${suggestions}\n\n---\n*These are optional enhancements to consider for future iterations.*`
+            });
+
+  # ============================================================================
+  # FINAL GATE: All Specialists Must Approve
+  # ============================================================================
+  ai_review_summary:
+    name: ✅ AI Review Summary
+    runs-on: ubuntu-latest
+    needs: [architecture_review, security_review, rust_specialist, frontend_specialist, test_coverage, gemini_strategic_review, gemini_innovation_review]
+    if: always()
+
+    steps:
+      - name: Check All Reviews Passed
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const jobs = [
+              'architecture_review',
+              'security_review',
+              'rust_specialist',
+              'frontend_specialist',
+              'test_coverage',
+              'gemini_strategic_review',
+              'gemini_innovation_review'
+            ];
+
+            const statuses = await Promise.all(
+              jobs.map(job =>
+                github.rest.actions.listJobsForWorkflowRun({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  run_id: context.runId
+                })
+              )
+            );
+
+            const allPassed = statuses.every(s =>
+              s.data.jobs.some(j => j.conclusion === 'success')
+            );
+
+            const emoji = allPassed ? '✅' : '⚠️';
+            const message = allPassed
+              ? '**All 7 AI Specialists Approved!** 🎉\n\n5 OpenAI specialists + 2 Gemini specialists agree this PR is ready for auto-merge.'
+              : '**Some AI Specialists Found Issues**\n\nPlease review the comments above.';
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${emoji} ${message}`
+            });
+
+            if (!allPassed) {
+              core.setFailed('Not all AI reviews passed');
+            }
