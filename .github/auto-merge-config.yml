@@ -1,0 +1,49 @@
+# Smart Auto-Merge Configuration
+# This file configures the autonomous merge behavior
+
+# When to auto-merge
+triggers:
+  - All required CI checks pass
+  - All AI specialist reviews approve
+  - No merge conflicts exist
+  - PR is from an approved bot account
+
+# Safety rules
+safety:
+  required_checks:
+    - "Test on ubuntu-latest"
+    - "Test on windows-latest"
+    - "Test on macos-latest"
+    - "🏗️ Architecture Specialist"
+    - "🔒 Security Specialist"
+    - "🦀 Rust Specialist"
+    - "✅ AI Review Summary"
+
+  block_on:
+    - Any check fails
+    - Merge conflicts exist
+    - Draft PR
+    - "do-not-merge" label present
+    - "needs-human-review" label present
+
+  approved_bot_accounts:
+    - "jules"
+    - "google-jules"
+    - "jules-ai"
+    - "dependabot"
+
+# Merge strategy
+merge:
+  method: squash  # Squash all commits into one
+  delete_branch: true  # Auto-delete branch after merge
+  commit_message: "auto"  # Use PR title and body
+
+# Notifications
+notifications:
+  on_success:
+    - comment: "✅ Auto-merged successfully!"
+    - label: "✅ auto-merged"
+
+  on_failure:
+    - comment: "⚠️ Auto-merge blocked. Manual review needed."
+    - label: "🚫 auto-merge-blocked"

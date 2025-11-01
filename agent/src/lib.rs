@@ -1,22 +1,27 @@
 // agent/src/lib.rs
 // Core library for Health & Speed Checker
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 // ============================================================================
 // CORE DATA TYPES (Frozen v1 API)
 // ============================================================================
 
+/// Configuration options for a system scan.
+///
+/// Controls which categories of checks are performed and scan depth.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanOptions {
+    /// Enable security-focused checks (firewall, ports, OS updates)
     pub security: bool,
+    /// Enable performance-focused checks (processes, disk, network)
     pub performance: bool,
+    /// Run quick scan (skips slow checkers like port scanning)
     pub quick: bool,
+    /// Skip application-level checks
     pub exclude_apps: bool,
+    /// Skip startup program analysis
     pub exclude_startup: bool,
 }
 
@@ -32,54 +37,97 @@ impl Default for ScanOptions {
     }
 }
 
+/// Complete result of a system health & speed scan.
+///
+/// Contains scores, detected issues, and metadata about the scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
+    /// Unique identifier for this scan (UUID v4)
     pub scan_id: String,
+    /// Unix timestamp (seconds since epoch)
     pub timestamp: u64,
+    /// How long the scan took to complete (milliseconds)
     pub duration_ms: u64,
+    /// Calculated health and speed scores (0-100)
     pub scores: SystemScores,
+    /// All issues detected during the scan
     pub issues: Vec<Issue>,
+    /// Additional scan metadata
     pub details: ScanDetails,
 }
 
+/// Health and speed scores with optional deltas from previous scan.
+///
+/// Scores range from 0-100, where 100 is perfect health/speed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemScores {
+    /// Overall system health score (0-100)
     pub health: u8,
+    /// Overall system speed score (0-100)
     pub speed: u8,
+    /// Change in health since last scan (-100 to +100)
     pub health_delta: Option<i8>,
+    /// Change in speed since last scan (-100 to +100)
     pub speed_delta: Option<i8>,
 }
 
+/// A detected system issue with optional fix action.
+///
+/// # Schema (FROZEN v1 - do not modify!)
+/// This schema is frozen and shared between Rust backend and TypeScript frontend.
+/// Any changes will break the API contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Issue {
+    /// Unique identifier for this issue type (e.g., "firewall_disabled")
     pub id: String,
+    /// How urgent this issue is
     pub severity: IssueSeverity,
+    /// Short user-facing title (e.g., "Windows Firewall is OFF")
     pub title: String,
+    /// Detailed explanation of the issue and its impact
     pub description: String,
+    /// Whether this affects security, performance, privacy, or both
     pub impact_category: ImpactCategory,
+    /// Optional action that can fix this issue
     pub fix: Option<FixAction>,
 }
 
+/// Severity level of a detected issue.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum IssueSeverity {
+    /// Urgent issue requiring immediate attention
     Critical,
+    /// Important issue that should be addressed soon
     Warning,
+    /// Informational item or minor optimization
     Info,
 }
 
+/// Category of impact an issue has on the system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ImpactCategory {
+    /// Affects system security (firewall, updates, ports)
     Security,
+    /// Affects system performance (CPU, disk, memory)
     Performance,
+    /// Affects user privacy (tracking, telemetry)
     Privacy,
+    /// Affects both security and performance
     Both,
 }
 
+/// An action that can be taken to fix an issue.
+///
+/// Can be automatic (one-click) or manual (show instructions).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FixAction {
+    /// Unique identifier for this fix (e.g., "enable_firewall")
     pub action_id: String,
+    /// User-facing button label (e.g., "Enable Firewall")
     pub label: String,
+    /// Whether this fix can run automatically without user interaction
     pub is_auto_fix: bool,
+    /// Additional parameters needed for the fix (JSON)
     pub params: serde_json::Value,
 }
 
@@ -210,29 +258,77 @@ impl FixResult {
 // CHECKER TRAIT (Plugin System)
 // ============================================================================
 
+/// Category of system check being performed.
 #[derive(Debug, Clone, Copy)]
 pub enum CheckCategory {
+    /// Security-related checks (firewall, ports, updates)
     Security,
+    /// Performance-related checks (CPU, disk, memory)
     Performance,
+    /// Privacy-related checks (tracking, telemetry)
     Privacy,
+    /// Firmware and BIOS checks
     Firmware,
+    /// Threat detection (malware, suspicious processes)
     Threat,
+    /// Compliance checks (regulations, standards)
     Compliance,
 }
 
+/// Context passed to checkers during a scan.
+///
+/// Contains scan options and will include progress reporting in the future.
 pub struct ScanContext {
+    /// Options for this scan
     pub options: ScanOptions,
-    pub progress_sender: Option<tokio::sync::mpsc::Sender<ProgressEvent>>,
+    // TODO: Add progress reporting when needed
 }
 
-#[async_trait]
+/// Core trait for all system health checkers.
+///
+/// # Implementation Requirements
+/// - Must be `Send + Sync` for thread safety
+/// - Must be synchronous (no async/await) for rusqlite compatibility
+/// - Must return quickly (< 5 seconds) for good UX
+///
+/// # Example
+/// ```ignore
+/// struct MyChecker;
+///
+/// impl Checker for MyChecker {
+///     fn name(&self) -> &'static str { "my_checker" }
+///     fn category(&self) -> CheckCategory { CheckCategory::Security }
+///     fn run(&self, context: &ScanContext) -> Vec<Issue> {
+///         // Perform checks and return issues
+///         vec![]
+///     }
+/// }
+/// ```
 pub trait Checker: Send + Sync {
+    /// Unique identifier for this checker (lowercase snake_case).
     fn name(&self) -> &'static str;
+
+    /// Category this checker belongs to.
     fn category(&self) -> CheckCategory;
 
-    async fn run(&self, context: &ScanContext) -> Vec<Issue>;
+    /// Run the checker and return detected issues.
+    ///
+    /// This method must be synchronous and should complete within a few seconds.
+    /// Use `context.options` to check if this checker should be skipped.
+    fn run(&self, context: &ScanContext) -> Vec<Issue>;
 
-    async fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
+    /// Attempt to fix an issue detected by this checker.
+    ///
+    /// # Arguments
+    /// * `issue_id` - The ID of the issue to fix (must match an Issue.id)
+    /// * `params` - Additional parameters for the fix (JSON)
+    ///
+    /// # Returns
+    /// * `Ok(FixResult)` - Fix succeeded or failed with details
+    /// * `Err(String)` - Fix not implemented or invalid issue_id
+    ///
+    /// Default implementation returns "not implemented" error.
+    fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
         Err(format!("Fix not implemented for {}", issue_id))
     }
 }
@@ -241,12 +337,30 @@ pub trait Checker: Send + Sync {
 // SCANNER ENGINE
 // ============================================================================
 
+/// Main orchestrator that runs all registered checkers and calculates scores.
+///
+/// # Thread Safety
+/// The engine is designed to be wrapped in `Arc<Mutex<>>` for concurrent access
+/// from Tauri commands.
+///
+/// # Example
+/// ```ignore
+/// let mut engine = ScannerEngine::new();
+/// engine.register(Box::new(FirewallChecker));
+/// engine.register(Box::new(DiskChecker));
+///
+/// let result = engine.scan(ScanOptions::default());
+/// println!("Health: {}, Speed: {}", result.scores.health, result.scores.speed);
+/// ```
 pub struct ScannerEngine {
     checkers: Vec<Box<dyn Checker>>,
     scoring_engine: ScoringEngine,
 }
 
 impl ScannerEngine {
+    /// Create a new scanner engine with no checkers registered.
+    ///
+    /// You must call `register()` to add checkers before scanning.
     pub fn new() -> Self {
         Self {
             checkers: Vec::new(),
@@ -254,18 +368,33 @@ impl ScannerEngine {
         }
     }
 
+    /// Register a checker to be run during scans.
+    ///
+    /// Checkers are run in the order they are registered.
     pub fn register(&mut self, checker: Box<dyn Checker>) {
         self.checkers.push(checker);
     }
 
-    pub async fn scan(&self, options: ScanOptions) -> ScanResult {
+    /// Run a full system scan with the specified options.
+    ///
+    /// # Process
+    /// 1. Runs all registered checkers based on scan options
+    /// 2. Collects all detected issues
+    /// 3. Calculates health and speed scores
+    /// 4. Returns complete ScanResult
+    ///
+    /// # Performance
+    /// Full scan typically takes 8-28 seconds. Quick mode: 2-5 seconds.
+    ///
+    /// # Thread Safety
+    /// This method is synchronous and thread-safe (&self, not &mut self).
+    pub fn scan(&self, options: ScanOptions) -> ScanResult {
         let scan_id = uuid::Uuid::new_v4().to_string();
         let start_time = std::time::Instant::now();
         let timestamp = chrono::Utc::now().timestamp() as u64;
 
         let context = ScanContext {
             options: options.clone(),
-            progress_sender: None, // TODO: Wire up progress events
         };
 
         let mut all_issues = Vec::new();
@@ -279,7 +408,7 @@ impl ScannerEngine {
             };
 
             if should_run {
-                let issues = checker.run(&context).await;
+                let issues = checker.run(&context);
                 all_issues.extend(issues);
             }
         }
@@ -336,10 +465,28 @@ impl ScannerEngine {
         }
     }
 
-    pub async fn fix_issue(&self, action_id: &str, params: &serde_json::Value) -> FixResult {
+    /// Attempt to fix an issue by delegating to the appropriate checker.
+    ///
+    /// # Arguments
+    /// * `action_id` - The FixAction.action_id from an Issue
+    /// * `params` - Additional parameters for the fix (FixAction.params)
+    ///
+    /// # Returns
+    /// A FixResult indicating success or failure. Always returns a result,
+    /// never panics.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let params = serde_json::json!({});
+    /// let result = engine.fix_issue("enable_firewall", &params);
+    /// if result.success {
+    ///     println!("Fixed: {}", result.message);
+    /// }
+    /// ```
+    pub fn fix_issue(&self, action_id: &str, params: &serde_json::Value) -> FixResult {
         // Find the checker that can handle this fix
         for checker in &self.checkers {
-            if let Ok(result) = checker.fix(action_id, params).await {
+            if let Ok(result) = checker.fix(action_id, params) {
                 return result;
             }
         }
@@ -409,7 +556,6 @@ impl ScoringEngine {
 }
 
 // Re-export commonly used dependencies
-pub use async_trait::async_trait;
 pub use serde_json;
 pub use uuid;
 

@@ -1,0 +1,89 @@
+name: 🧹 Stale Issue Manager
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  # ============================================================================
+  # CLEAN UP STALE ISSUES AND PRs
+  # ============================================================================
+  stale:
+    name: 🗑️ Mark Stale Issues
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/stale@v8
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Issues
+          stale-issue-message: |
+            👋 **This issue has been inactive for 30 days.**
+
+            If you're still experiencing this problem:
+            - Add a comment with updates
+            - Provide additional context
+            - Confirm it's still relevant
+
+            Otherwise, this issue will be closed in 7 days.
+
+            ---
+            *You can remove the "stale" label to keep this open.*
+
+          close-issue-message: |
+            🔒 **Closing due to inactivity.**
+
+            This issue was automatically closed after 37 days of inactivity.
+
+            If you need to reopen:
+            - Comment on this issue
+            - Or create a new issue with updated information
+
+            Thanks for your contribution! 🙏
+
+          days-before-issue-stale: 30
+          days-before-issue-close: 7
+          stale-issue-label: '🕸️ stale'
+          exempt-issue-labels: '🔥 critical,🐛 bug,💡 enhancement,🚀 feature-request,👀 needs-human-review'
+
+          # Pull Requests
+          stale-pr-message: |
+            👋 **This PR has been inactive for 14 days.**
+
+            To keep this PR active:
+            - Respond to review comments
+            - Rebase on latest main
+            - Add any missing tests
+
+            Otherwise, this PR will be closed in 7 days.
+
+            ---
+            *You can remove the "stale" label or push new commits to keep this open.*
+
+          close-pr-message: |
+            🔒 **Closing due to inactivity.**
+
+            This PR was automatically closed after 21 days of inactivity.
+
+            If you want to continue this work:
+            - Rebase on latest main
+            - Open a new PR
+            - Reference this PR in the description
+
+            Thanks for your contribution! 🙏
+
+          days-before-pr-stale: 14
+          days-before-pr-close: 7
+          stale-pr-label: '🕸️ stale'
+          exempt-pr-labels: '🚫 do-not-merge,👀 needs-human-review,🚀 high-priority'
+
+          # Only check issues/PRs with activity
+          operations-per-run: 100
+          remove-stale-when-updated: true

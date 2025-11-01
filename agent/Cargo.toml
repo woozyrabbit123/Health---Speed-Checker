@@ -47,6 +47,12 @@ thiserror = "1.0"
 sysinfo = "0.30"
 systemstat = "0.2"
 
+# Network utilities
+ureq = "2.9"  # Lightweight HTTP client for speed tests
+
+# Parallel processing
+rayon = "1.8"  # Parallel iterators for port scanning
+
 # Windows-specific
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.52", features = [
@@ -55,6 +61,7 @@ windows = { version = "0.52", features = [
     "Win32_System_Services",
     "Win32_Security",
     "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",  # For network adapter enumeration
     "Win32_System_ProcessStatus",
     "Win32_System_Performance",
 ]}

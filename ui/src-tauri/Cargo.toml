@@ -32,6 +32,13 @@ tracing-subscriber = "0.3"
 anyhow = "1.0"
 thiserror = "1.0"
 
+# System utilities
+hostname = "0.3"
+
+# PDF generation
+printpdf = "0.7"  # PDF export functionality
+base64 = "0.21"   # Base64 encoding for PDF export
+
 [features]
 # By default, Tauri runs in production mode when you build
 default = ["custom-protocol"]

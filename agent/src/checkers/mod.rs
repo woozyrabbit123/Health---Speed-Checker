@@ -1,12 +1,19 @@
 // agent/src/checkers/mod.rs
 // Checker implementations for Health & Speed Checker
 
-pub mod firewall;
-pub mod startup;
-pub mod process;
-pub mod os_update;
-pub mod ports;
+// New checker modules (external files)
+pub mod bloatware;
+pub mod network;
+pub mod smart_disk;
+pub mod storage;
 
+// Export new checkers
+pub use bloatware::BloatwareDetector;
+pub use network::NetworkChecker;
+pub use smart_disk::SmartDiskChecker;
+pub use storage::StorageChecker;
+
+// Inline checker modules (defined below)
 pub use firewall::FirewallChecker;
 pub use startup::StartupAnalyzer;
 pub use process::ProcessMonitor;
@@ -19,11 +26,9 @@ pub use ports::PortScanner;
 
 pub mod firewall {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct FirewallChecker;
 
-    #[async_trait]
     impl Checker for FirewallChecker {
         fn name(&self) -> &'static str {
             "firewall_checker"
@@ -33,12 +38,12 @@ pub mod firewall {
             CheckCategory::Security
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             #[cfg(target_os = "windows")]
             {
-                if let Ok(is_enabled) = check_windows_firewall().await {
+                if let Ok(is_enabled) = check_windows_firewall() {
                     if !is_enabled {
                         issues.push(Issue {
                             id: "firewall_disabled".to_string(),
@@ -60,11 +65,11 @@ pub mod firewall {
             issues
         }
 
-        async fn fix(&self, issue_id: &str, _params: &serde_json::Value) -> Result<FixResult, String> {
+        fn fix(&self, issue_id: &str, _params: &serde_json::Value) -> Result<FixResult, String> {
             if issue_id == "enable_firewall" {
                 #[cfg(target_os = "windows")]
                 {
-                    enable_windows_firewall().await?;
+                    enable_windows_firewall()?;
                     return Ok(FixResult::success("Windows Firewall enabled successfully"));
                 }
 
@@ -77,7 +82,7 @@ pub mod firewall {
     }
 
     #[cfg(target_os = "windows")]
-    async fn check_windows_firewall() -> Result<bool, String> {
+    fn check_windows_firewall() -> Result<bool, String> {
         use std::process::Command;
 
         let output = Command::new("netsh")
@@ -90,7 +95,7 @@ pub mod firewall {
     }
 
     #[cfg(target_os = "windows")]
-    async fn enable_windows_firewall() -> Result<(), String> {
+    fn enable_windows_firewall() -> Result<(), String> {
         use std::process::Command;
 
         Command::new("netsh")
@@ -108,11 +113,9 @@ pub mod firewall {
 
 pub mod startup {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct StartupAnalyzer;
 
-    #[async_trait]
     impl Checker for StartupAnalyzer {
         fn name(&self) -> &'static str {
             "startup_analyzer"
@@ -122,14 +125,14 @@ pub mod startup {
             CheckCategory::Performance
         }
 
-        async fn run(&self, context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             if context.options.exclude_startup {
                 return issues;
             }
 
-            let startup_items = get_startup_items().await.unwrap_or_default();
+            let startup_items = get_startup_items().unwrap_or_default();
 
             if startup_items.len() > 15 {
                 issues.push(Issue {
@@ -179,7 +182,7 @@ pub mod startup {
         }
     }
 
-    async fn get_startup_items() -> Result<Vec<StartupItem>, String> {
+    fn get_startup_items() -> Result<Vec<StartupItem>, String> {
         let mut items = Vec::new();
 
         #[cfg(target_os = "windows")]
@@ -230,11 +233,9 @@ pub mod startup {
 
 pub mod process {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct ProcessMonitor;
 
-    #[async_trait]
     impl Checker for ProcessMonitor {
         fn name(&self) -> &'static str {
             "process_monitor"
@@ -244,10 +245,10 @@ pub mod process {
             CheckCategory::Performance
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
-            if let Ok(top_processes) = get_top_cpu_processes(5).await {
+            if let Ok(top_processes) = get_top_cpu_processes(5) {
                 for process in top_processes {
                     if process.cpu_percent > 50.0 && !is_system_process(&process.name) {
                         issues.push(Issue {
@@ -298,45 +299,30 @@ pub mod process {
         }
     }
 
-    async fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
-        let mut processes = Vec::new();
+    fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
+        use sysinfo::{ProcessExt, System, SystemExt};
 
-        #[cfg(target_os = "windows")]
-        {
-            use std::process::Command;
+        let mut sys = System::new_all();
 
-            let output = Command::new("wmic")
-                .args(&[
-                    "process",
-                    "get",
-                    "ProcessId,Name,WorkingSetSize,PageFileUsage",
-                    "/format:csv"
-                ])
-                .output()
-                .map_err(|e| format!("Failed to get processes: {}", e))?;
+        // Refresh twice with a delay to get accurate CPU measurements
+        sys.refresh_all();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        sys.refresh_all();
 
-            let stdout = String::from_utf8_lossy(&output.stdout);
-
-            // Parse CSV output (skip header lines)
-            for line in stdout.lines().skip(2).take(limit) {
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 5 {
-                    if let Ok(pid) = parts[3].parse::<u32>() {
-                        if let Ok(memory_bytes) = parts[4].parse::<u64>() {
-                            processes.push(ProcessInfo {
-                                pid,
-                                name: parts[1].to_string(),
-                                cpu_percent: 0.0, // TODO: Get actual CPU usage
-                                memory_mb: (memory_bytes / 1024 / 1024) as f32,
-                            });
-                        }
-                    }
+        let mut processes: Vec<ProcessInfo> = sys.processes()
+            .iter()
+            .map(|(pid, process)| {
+                ProcessInfo {
+                    pid: pid.as_u32(),
+                    name: process.name().to_string(),
+                    cpu_percent: process.cpu_usage(),
+                    memory_mb: (process.memory() / 1024 / 1024) as f32,
                 }
-            }
-        }
+            })
+            .collect();
 
-        // Sort by memory usage for now (since we don't have CPU data yet)
-        processes.sort_by(|a, b| b.memory_mb.partial_cmp(&a.memory_mb).unwrap());
+        // Sort by CPU usage (descending)
+        processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
         processes.truncate(limit);
 
         Ok(processes)
@@ -375,11 +361,9 @@ pub mod process {
 
 pub mod os_update {
     use crate::*;
-    use async_trait::async_trait;
 
     pub struct OsUpdateChecker;
 
-    #[async_trait]
     impl Checker for OsUpdateChecker {
         fn name(&self) -> &'static str {
             "os_update_checker"
@@ -389,12 +373,12 @@ pub mod os_update {
             CheckCategory::Security
         }
 
-        async fn run(&self, _context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, _context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             #[cfg(target_os = "windows")]
             {
-                if let Ok(update_status) = check_windows_updates().await {
+                if let Ok(update_status) = check_windows_updates() {
                     if update_status.pending_updates > 0 {
                         let severity = if update_status.pending_updates > 5 {
                             IssueSeverity::Critical
@@ -426,7 +410,7 @@ pub mod os_update {
     }
 
     #[cfg(target_os = "windows")]
-    async fn check_windows_updates() -> Result<OsUpdateStatus, String> {
+    fn check_windows_updates() -> Result<OsUpdateStatus, String> {
         use std::process::Command;
 
         // This is a simplified check - real implementation would use Windows Update API
@@ -440,14 +424,14 @@ pub mod os_update {
 
         Ok(OsUpdateStatus {
             is_current: update_count == 0,
-            current_build: get_windows_build().await.unwrap_or_else(|_| "Unknown".to_string()),
+            current_build: get_windows_build().unwrap_or_else(|_| "Unknown".to_string()),
             latest_build: None,
             pending_updates: if update_count == 0 { 0 } else { 3 }, // Simplified
         })
     }
 
     #[cfg(target_os = "windows")]
-    async fn get_windows_build() -> Result<String, String> {
+    fn get_windows_build() -> Result<String, String> {
         use std::process::Command;
 
         let output = Command::new("cmd")
@@ -465,12 +449,11 @@ pub mod os_update {
 
 pub mod ports {
     use crate::*;
-    use async_trait::async_trait;
     use std::collections::HashSet;
+    use rayon::prelude::*;
 
     pub struct PortScanner;
 
-    #[async_trait]
     impl Checker for PortScanner {
         fn name(&self) -> &'static str {
             "port_scanner"
@@ -480,7 +463,7 @@ pub mod ports {
             CheckCategory::Security
         }
 
-        async fn run(&self, context: &ScanContext) -> Vec<Issue> {
+        fn run(&self, context: &ScanContext) -> Vec<Issue> {
             let mut issues = Vec::new();
 
             if context.options.quick {
@@ -488,7 +471,7 @@ pub mod ports {
                 return issues;
             }
 
-            if let Ok(open_ports) = scan_open_ports().await {
+            if let Ok(open_ports) = scan_open_ports() {
                 for port_info in open_ports {
                     if is_risky_port(&port_info) && !is_whitelisted_port(&port_info) {
                         issues.push(Issue {
@@ -523,7 +506,7 @@ pub mod ports {
         }
     }
 
-    async fn scan_open_ports() -> Result<Vec<PortInfo>, String> {
+    fn scan_open_ports() -> Result<Vec<PortInfo>, String> {
         let mut ports = Vec::new();
 
         #[cfg(target_os = "windows")]
@@ -537,19 +520,20 @@ pub mod ports {
 
             let stdout = String::from_utf8_lossy(&output.stdout);
 
-            let mut seen_ports = HashSet::new();
-
-            for line in stdout.lines() {
-                if line.contains("LISTENING") {
+            // Parallel processing of netstat output lines using rayon
+            let parsed_ports: Vec<Option<PortInfo>> = stdout
+                .lines()
+                .par_bridge()  // Convert iterator to parallel iterator
+                .filter(|line| line.contains("LISTENING"))
+                .map(|line| {
                     // Parse lines like "  TCP    0.0.0.0:3389           0.0.0.0:0              LISTENING"
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 2 {
                         if let Some(addr) = parts.get(1) {
                             if let Some(port_str) = addr.split(':').last() {
                                 if let Ok(port) = port_str.parse::<u16>() {
-                                    if !seen_ports.contains(&port) && port < 10000 {
-                                        seen_ports.insert(port);
-                                        ports.push(PortInfo {
+                                    if port < 10000 {
+                                        return Some(PortInfo {
                                             port,
                                             protocol: "TCP".to_string(),
                                             service: get_service_name(port),
@@ -560,6 +544,16 @@ pub mod ports {
                             }
                         }
                     }
+                    None
+                })
+                .collect();
+
+            // Deduplicate ports
+            let mut seen_ports = HashSet::new();
+            for port_info in parsed_ports.into_iter().flatten() {
+                if !seen_ports.contains(&port_info.port) {
+                    seen_ports.insert(port_info.port);
+                    ports.push(port_info);
                 }
             }
         }

@@ -1,0 +1,173 @@
+name: 🚀 Smart Auto-Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: ["Build and Test", "🤖 AI Specialist Review Team"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  pull-requests: write
+  contents: write
+  checks: read
+
+jobs:
+  # ============================================================================
+  # AUTO-MERGE DECISION ENGINE
+  # ============================================================================
+  auto_merge:
+    name: 🤖 Auto-Merge Decision
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Get PR Details
+        id: pr
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let pr;
+            if (context.payload.pull_request) {
+              pr = context.payload.pull_request;
+            } else if (context.payload.workflow_run) {
+              const prs = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head: context.payload.workflow_run.head_branch
+              });
+              pr = prs.data[0];
+            }
+
+            if (!pr) {
+              core.setFailed('No PR found');
+              return;
+            }
+
+            core.setOutput('number', pr.number);
+            core.setOutput('head', pr.head.sha);
+            core.setOutput('author', pr.user.login);
+            return pr;
+
+      - name: Check if PR is from Jules
+        id: is_jules
+        run: |
+          AUTHOR="${{ steps.pr.outputs.author }}"
+          if [[ "$AUTHOR" == "jules"* ]] || [[ "$AUTHOR" == "google-jules"* ]] || [[ "$AUTHOR" == *"bot"* ]]; then
+            echo "is_bot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_bot=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get All Check Statuses
+        id: checks
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          result-encoding: string
+          script: |
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: '${{ steps.pr.outputs.head }}'
+            });
+
+            // Required checks that must pass
+            const requiredChecks = [
+              'Test on ubuntu-latest',
+              'Test on windows-latest',
+              'Test on macos-latest',
+              '🏗️ Architecture Specialist',
+              '🔒 Security Specialist',
+              '🦀 Rust Specialist',
+              '✅ AI Review Summary'
+            ];
+
+            const checkResults = checks.check_runs.reduce((acc, check) => {
+              acc[check.name] = check.conclusion;
+              return acc;
+            }, {});
+
+            const allRequired = requiredChecks.every(name =>
+              checkResults[name] === 'success'
+            );
+
+            const anyFailed = Object.values(checkResults).some(c =>
+              c === 'failure' || c === 'cancelled'
+            );
+
+            console.log('Check Results:', checkResults);
+            console.log('All Required Passed:', allRequired);
+            console.log('Any Failed:', anyFailed);
+
+            core.setOutput('all_passed', allRequired);
+            core.setOutput('any_failed', anyFailed);
+
+            return allRequired ? 'ready' : 'not_ready';
+
+      - name: Enable Auto-Merge
+        if: |
+          steps.is_jules.outputs.is_bot == 'true' &&
+          steps.checks.outputs.all_passed == 'true' &&
+          steps.checks.outputs.any_failed == 'false'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GH_PAT }}
+          script: |
+            const prNumber = ${{ steps.pr.outputs.number }};
+
+            try {
+              // Enable auto-merge with squash strategy
+              await github.rest.pulls.enableAutoMerge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_request_number: prNumber,
+                merge_method: 'squash'
+              });
+
+              // Add success comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `🚀 **Auto-Merge Enabled**\n\n✅ All checks passed!\n✅ AI review approved!\n\nThis PR will merge automatically once all conditions are met.\n\n---\n*Automated by Jules Smart Auto-Merge System*`
+              });
+
+              // Add approval label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['✅ auto-merge-ready', '🤖 ai-approved']
+              });
+
+            } catch (error) {
+              console.error('Failed to enable auto-merge:', error);
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `⚠️ **Auto-Merge Setup Failed**\n\nAll checks passed, but auto-merge could not be enabled.\n\nError: ${error.message}\n\nYou may need to manually merge this PR.`
+              });
+            }
+
+      - name: Comment if Not Ready
+        if: |
+          steps.checks.outputs.all_passed != 'true' ||
+          steps.checks.outputs.any_failed == 'true'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr.outputs.number }},
+              body: `⏳ **Auto-Merge Pending**\n\nSome checks are still running or have failed.\n\nWaiting for:\n- All tests to pass\n- All AI reviews to complete\n- Security scan to pass\n\nAuto-merge will trigger automatically when ready.`
+            });

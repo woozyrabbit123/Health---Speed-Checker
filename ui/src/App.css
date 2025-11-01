@@ -247,3 +247,386 @@ body {
 .transition-slow {
   transition: all 0.5s ease-out;
 }
+
+/* ============================================================================
+   ENHANCED ANIMATIONS & EFFECTS
+   ============================================================================ */
+
+/* Glow effects */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.5),
+                0 0 10px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8),
+                0 0 30px rgba(59, 130, 246, 0.5);
+  }
+}
+
+.glow-blue {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.glow-green {
+  animation: glow 2s ease-in-out infinite;
+  filter: hue-rotate(100deg);
+}
+
+.glow-red {
+  animation: glow 2s ease-in-out infinite;
+  filter: hue-rotate(-60deg);
+}
+
+/* Bounce animation */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+
+/* Scale pulse */
+@keyframes scalePulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.scale-pulse {
+  animation: scalePulse 2s ease-in-out infinite;
+}
+
+/* Shimmer effect for loading */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #1f2937 0px,
+    #374151 50%,
+    #1f2937 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.5s ease-out;
+}
+
+/* Fade in left */
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.fade-in-left {
+  animation: fadeInLeft 0.4s ease-out;
+}
+
+/* Fade in right */
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.fade-in-right {
+  animation: fadeInRight 0.4s ease-out;
+}
+
+/* Rotate in */
+@keyframes rotateIn {
+  from {
+    opacity: 0;
+    transform: rotate(-180deg) scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+.rotate-in {
+  animation: rotateIn 0.6s ease-out;
+}
+
+/* Progress bar fill animation */
+@keyframes progressFill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: var(--progress);
+  }
+}
+
+.progress-fill {
+  animation: progressFill 1s ease-out forwards;
+}
+
+/* Staggered animations */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+
+/* Glass morphism effect */
+.glass {
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-hover:hover {
+  background: rgba(31, 41, 55, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Animated gradient background */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animated-gradient {
+  background: linear-gradient(270deg, #3b82f6, #8b5cf6, #ec4899);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Ripple effect */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: rgba(59, 130, 246, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  animation: ripple 1s ease-out;
+}
+
+/* Success checkmark animation */
+@keyframes checkmark {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.checkmark {
+  stroke-dasharray: 100;
+  animation: checkmark 0.5s ease-out forwards;
+}
+
+/* Hover effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+.hover-glow {
+  transition: box-shadow 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+}
+
+/* Status dot pulse */
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.dot-pulse {
+  animation: dotPulse 2s ease-in-out infinite;
+}
+
+/* Scan wave animation */
+@keyframes scanWave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.scan-wave {
+  position: relative;
+  overflow: hidden;
+}
+
+.scan-wave::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(59, 130, 246, 0.2),
+    transparent
+  );
+  animation: scanWave 2s infinite;
+}
+
+/* Badge animations */
+.badge-pop {
+  animation: scalePulse 0.3s ease-out;
+}
+
+/* Notification slide in */
+@keyframes notificationSlide {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.notification-slide {
+  animation: notificationSlide 0.4s ease-out;
+}
+
+/* Loading dots */
+@keyframes loadingDots {
+  0%, 20% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.loading-dot {
+  animation: loadingDots 1.4s infinite;
+}
+
+.loading-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Performance optimizations */
+.will-change-transform {
+  will-change: transform;
+}
+
+.will-change-opacity {
+  will-change: opacity;
+}
+
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
