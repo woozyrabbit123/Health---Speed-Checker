@@ -1,7 +1,7 @@
 // ui/src/App.tsx
 // Main React component for Health & Speed Checker
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
 import {
   Shield,
@@ -17,6 +17,10 @@ import {
   Activity
 } from 'lucide-react';
 import './App.css';
+import { QuickActions } from './components/QuickActions';
+import { ExportDialog } from './components/ExportDialog';
+import { TrendsChart } from './components/TrendsChart';
+import { useKeyboardShortcuts, useShortcutsModal, KeyboardShortcutsModal } from './hooks/useKeyboardShortcuts';
 
 interface ScanResult {
   scan_id: string;
@@ -57,6 +61,50 @@ function App() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [currentTab, setCurrentTab] = useState<'overview' | 'security' | 'performance'>('overview');
   const [ignoredIssues, setIgnoredIssues] = useState<Set<string>>(new Set());
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [scanHistory, setScanHistory] = useState<Array<{timestamp: number, health: number, speed: number}>>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [fixingIssueId, setFixingIssueId] = useState<string | null>(null);
+
+  // Filter visible issues
+  const visibleIssues = scanResult?.issues.filter(
+    (issue) => !ignoredIssues.has(issue.id)
+  ) || [];
+
+  // Auto-dismiss messages after 5 seconds
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  // Initialize keyboard shortcuts
+  const shortcuts = useKeyboardShortcuts({
+    scan: () => !scanning && startScan(false),
+    quickScan: () => !scanning && startScan(true),
+    fix: () => {
+      const topIssue = visibleIssues[0];
+      if (topIssue?.fix) {
+        fixIssue(topIssue.fix.action_id, {}, topIssue.id);
+      }
+    },
+    export: () => scanResult && setShowExportDialog(true),
+    cancel: () => {
+      setShowExportDialog(false);
+    },
+  });
+
+  // Shortcuts modal
+  const { isVisible: showShortcutsModal, close: closeShortcutsModal } = useShortcutsModal();
 
   // Start a scan
   const startScan = async (quick: boolean = false) => {
@@ -96,27 +144,42 @@ function App() {
       setTimeout(async () => {
         const result = await invoke<ScanResult>('get_scan_result', { scanId });
         setScanResult(result);
+
+        // Add to history
+        setScanHistory(prev => [...prev, {
+          timestamp: result.timestamp,
+          health: result.scores.health,
+          speed: result.scores.speed,
+        }].slice(-30)); // Keep last 30 scans
+
         setScanning(false);
         setProgress(100);
         clearInterval(progressInterval);
         setProgressMessage('Scan complete!');
       }, 5000);
     } catch (error) {
-      console.error('Scan failed:', error);
       setScanning(false);
       setProgressMessage('Scan failed');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to start scan. Please try again.');
     }
   };
 
   // Fix an issue
-  const fixIssue = async (actionId: string, params: any) => {
+  const fixIssue = async (actionId: string, params: any, issueId?: string) => {
+    if (issueId) setFixingIssueId(issueId);
     try {
-      const result = await invoke('fix_action', { actionId, params });
-      console.log('Fix result:', result);
-      // Refresh scan after fix
-      startScan(true);
+      const result = await invoke<{success: boolean, message: string}>('fix_action', { actionId, params });
+      if (result.success) {
+        setSuccessMessage(result.message);
+        // Refresh scan after fix
+        startScan(true);
+      } else {
+        setErrorMessage(result.message);
+      }
     } catch (error) {
-      console.error('Fix failed:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to apply fix. Please try manually.');
+    } finally {
+      setFixingIssueId(null);
     }
   };
 
@@ -145,11 +208,6 @@ function App() {
         return null;
     }
   };
-
-  // Filter visible issues
-  const visibleIssues = scanResult?.issues.filter(
-    (issue) => !ignoredIssues.has(issue.id)
-  ) || [];
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -319,11 +377,21 @@ function App() {
                           <div className="flex items-center space-x-3">
                             {issue.fix && (
                               <button
-                                onClick={() => fixIssue(issue.fix!.action_id, {})}
-                                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                                onClick={() => fixIssue(issue.fix!.action_id, {}, issue.id)}
+                                disabled={fixingIssueId === issue.id}
+                                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm transition-colors"
                               >
-                                <CheckCircle className="w-4 h-4" />
-                                <span>{issue.fix.label}</span>
+                                {fixingIssueId === issue.id ? (
+                                  <>
+                                    <div className="spinner w-4 h-4" />
+                                    <span>Fixing...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="w-4 h-4" />
+                                    <span>{issue.fix.label}</span>
+                                  </>
+                                )}
                               </button>
                             )}
                             <button
@@ -356,14 +424,91 @@ function App() {
                 <Play className="w-4 h-4" />
                 <span>Scan Again</span>
               </button>
-              <button className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors">
+              <button
+                onClick={() => setShowExportDialog(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+              >
                 <Download className="w-4 h-4" />
                 <span>Export Report</span>
               </button>
             </div>
+
+            {/* Trends Chart */}
+            {scanHistory.length > 0 && (
+              <div className="mt-8">
+                <h3 className="text-xl font-semibold mb-4">Historical Trends</h3>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TrendsChart
+                    data={scanHistory}
+                    type="health"
+                  />
+                  <TrendsChart
+                    data={scanHistory}
+                    type="speed"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
+
+      {/* Quick Actions Widget */}
+      {!scanning && (
+        <QuickActions
+          onScanQuick={() => startScan(true)}
+          onScanFull={() => startScan(false)}
+          onFixTop={() => {
+            const topIssue = visibleIssues[0];
+            if (topIssue?.fix) {
+              fixIssue(topIssue.fix.action_id, {}, topIssue.id);
+            }
+          }}
+          onExport={() => scanResult && setShowExportDialog(true)}
+          onHistory={() => setErrorMessage('History feature coming soon!')}
+          isScanning={scanning}
+          healthScore={scanResult?.scores.health}
+        />
+      )}
+
+      {/* Export Dialog */}
+      {showExportDialog && scanResult && (
+        <ExportDialog
+          scanId={scanResult.scan_id}
+          onClose={() => setShowExportDialog(false)}
+          onSuccess={(message) => setSuccessMessage(message)}
+          onError={(message) => setErrorMessage(message)}
+        />
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcutsModal && (
+        <KeyboardShortcutsModal
+          shortcuts={shortcuts}
+          onClose={closeShortcutsModal}
+        />
+      )}
+
+      {/* Toast Notifications */}
+      {errorMessage && (
+        <div className="fixed bottom-4 right-4 bg-red-600 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 max-w-md notification-slide z-50">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <p className="flex-1">{errorMessage}</p>
+          <button onClick={() => setErrorMessage(null)} className="text-white hover:text-gray-200">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 max-w-md notification-slide z-50">
+          <CheckCircle className="w-5 h-5 flex-shrink-0" />
+          <p className="flex-1">{successMessage}</p>
+          <button onClick={() => setSuccessMessage(null)} className="text-white hover:text-gray-200">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

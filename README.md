@@ -147,6 +147,263 @@ health-checker daemon stop
 health-checker daemon status
 ```
 
+## 📖 What You Get
+
+### 💻 Desktop Application
+Beautiful native app with:
+- **Real-time scanning** with progress indicators
+- **Interactive charts** showing health trends over time
+- **One-click fixes** for common issues
+- **Historical tracking** - see your improvements
+- **Export reports** to PDF/JSON for sharing
+
+### ⌨️ Command Line Interface
+Powerful CLI for automation:
+- **Script-friendly** JSON output
+- **Cron job** integration
+- **CI/CD** pipeline support
+- **Remote monitoring** capabilities
+
+## 🎨 Screenshots
+
+### Main Dashboard
+![Dashboard](docs/images/dashboard.png)
+
+The main dashboard shows your current health and speed scores with at-a-glance status indicators.
+
+### Scan Results
+![Scan Results](docs/images/scan-results.png)
+
+Detailed breakdown of all detected issues, categorized by severity and type.
+
+### Historical Trends
+![Trends Chart](docs/images/trends.png)
+
+Track your system's health and speed over time with beautiful, interactive charts.
+
+### Issue Details
+![Issue Details](docs/images/issue-details.png)
+
+Each issue includes:
+- Clear explanation of the problem
+- Impact on system health/speed
+- Step-by-step fix instructions
+- One-click remediation when possible
+
+## 🔍 What Gets Checked
+
+### Security Checks
+| Check | What It Does | Platforms |
+|-------|--------------|-----------|
+| **Firewall Status** | Verifies Windows Defender/iptables is active | Win, Lin |
+| **OS Updates** | Checks for pending security patches | All |
+| **Open Ports** | Scans for unexpected open ports | All |
+| **Vulnerable Apps** | Detects outdated software with known CVEs | All |
+| **Antivirus Status** | Confirms real-time protection is enabled | Win |
+| **BitLocker/FileVault** | Checks disk encryption status | Win, Mac |
+
+### Performance Checks
+| Check | What It Does | Platforms |
+|-------|--------------|-----------|
+| **Startup Programs** | Identifies unnecessary auto-start apps | All |
+| **Bloatware** | Detects common resource-hogging software | All |
+| **CPU Hogs** | Finds processes consuming excessive CPU | All |
+| **Memory Leaks** | Identifies apps with growing memory usage | All |
+| **Disk Health** | S.M.A.R.T. status and fragmentation | All |
+| **Network Speed** | Tests connection latency and throughput | All |
+
+## 🧪 Example Output
+
+### Quick Scan (5 seconds)
+```bash
+$ health-checker scan --quick
+
+🩺 Health Score: 87/100  (+5 since last scan)
+⚡ Speed Score:  72/100   (-3 since last scan)
+
+⚠️ Issues Found: 3
+
+HIGH: Windows Update Pending
+  → 12 security updates available
+  → Fix: health-checker fix windows_update_pending
+
+MEDIUM: Startup Bloat Detected
+  → 8 unnecessary programs at startup
+  → Fix: health-checker fix startup_bloat
+
+LOW: Disk Fragmentation
+  → C: drive is 15% fragmented
+  → Fix: health-checker fix disk_defrag
+
+Scan completed in 4.2s
+```
+
+### Full Scan with JSON Output
+```bash
+$ health-checker scan --output json
+
+{
+  "scan_id": "scan_2025-01-15_14-30-22",
+  "timestamp": 1736952622,
+  "health_score": 87,
+  "speed_score": 72,
+  "scores": {
+    "security": 92,
+    "performance": 68,
+    "stability": 95
+  },
+  "issues": [
+    {
+      "id": "windows_update_pending",
+      "title": "Windows Update Pending",
+      "severity": "high",
+      "category": "security",
+      "description": "12 security updates are pending installation",
+      "fixable": true,
+      "affected_item": "Windows Update Service"
+    }
+  ],
+  "deltas": {
+    "health": +5,
+    "speed": -3,
+    "issues_fixed_since_last": 2
+  },
+  "scan_duration_ms": 4200
+}
+```
+
+### Fixing Issues
+```bash
+$ health-checker fix startup_bloat
+
+🔧 Fixing: Startup Bloat Detected
+
+Disabling unnecessary startup programs:
+  ✓ Discord auto-start
+  ✓ Spotify auto-start
+  ✓ Steam auto-start
+  ✓ Adobe Creative Cloud
+  ✓ OneDrive sync (kept in background)
+  ✓ Dropbox
+  ✓ Epic Games Launcher
+  ✓ Skype
+
+💾 Created system restore point: BeforeFix_startup_bloat
+
+✅ Fixed successfully!
+
+Expected improvements:
+  • Boot time: -15 to -30 seconds
+  • Available RAM: +500 to +800 MB
+  • CPU idle usage: -10% to -15%
+
+Note: Restart required for changes to take full effect.
+```
+
+## 🤝 Contributing
+
+We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+### Development Setup
+
+```bash
+# 1. Clone and enter directory
+git clone https://github.com/yourusername/health-speed-checker.git
+cd health-speed-checker
+
+# 2. Run development script (handles everything)
+# Windows
+scripts\dev.bat
+
+# macOS/Linux
+./scripts/dev.sh
+
+# 3. The app will launch automatically with hot-reload enabled
+```
+
+### Adding a New Checker
+
+```rust
+// agent/src/checkers/my_checker.rs
+use crate::{Checker, CheckCategory, Issue, IssueSeverity, ScanContext};
+
+pub struct MyChecker;
+
+impl Checker for MyChecker {
+    fn name(&self) -> &'static str {
+        "My Custom Checker"
+    }
+
+    fn category(&self) -> CheckCategory {
+        CheckCategory::Performance
+    }
+
+    fn run(&self, context: &ScanContext) -> Vec<Issue> {
+        let mut issues = Vec::new();
+
+        // Your detection logic here
+
+        issues
+    }
+
+    fn fix(&self, issue_id: &str, params: &serde_json::Value) -> Result<FixResult, String> {
+        // Your fix logic here
+        Ok(FixResult {
+            success: true,
+            message: "Fixed successfully".to_string(),
+            requires_restart: false,
+        })
+    }
+}
+```
+
+Then register it in `agent/src/lib.rs`:
+```rust
+engine.register(Box::new(checkers::my_checker::MyChecker));
+```
+
+## 🤖 Automation Examples
+
+### Daily Health Check (Cron)
+```bash
+# Check health every day at 2 AM
+0 2 * * * /usr/local/bin/health-checker scan --quick --output json > /var/log/health-check.json
+```
+
+### CI/CD Integration
+```yaml
+# .github/workflows/health-check.yml
+name: System Health Check
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily
+
+jobs:
+  health_check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Health Check
+        run: |
+          wget https://github.com/.../health-checker-linux
+          chmod +x health-checker-linux
+          ./health-checker-linux scan --output json > health-report.json
+
+      - name: Upload Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: health-report
+          path: health-report.json
+```
+
+### PowerShell Script
+```powershell
+# Schedule daily health checks on Windows
+$action = New-ScheduledTaskAction -Execute "health-checker.exe" -Argument "scan --quick"
+$trigger = New-ScheduledTaskTrigger -Daily -At 2am
+Register-ScheduledTask -Action $action -Trigger $trigger -TaskName "Daily Health Check"
+```
+
 ## 🏗️ Architecture
 
 ```
