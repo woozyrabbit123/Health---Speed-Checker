@@ -2,8 +2,9 @@
 // Tests internet speed, latency, and connection stability
 
 use crate::{Checker, CheckCategory, Issue, IssueSeverity, ImpactCategory, ScanContext, FixAction};
-use std::time::{Duration, Instant};
+use std::io::Read;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::time::{Duration, Instant};
 
 pub struct NetworkChecker;
 
@@ -24,16 +25,15 @@ impl NetworkChecker {
         let mut successful_pings = 0;
 
         for (host, _name) in &test_hosts {
-            if let Ok(start) = Instant::now().elapsed().as_millis().try_into() {
-                if TcpStream::connect_timeout(
-                    &host.to_socket_addrs().ok()?.next()?,
-                    Duration::from_secs(2)
-                ).is_ok() {
-                    let latency = Instant::now().duration_since(
-                        Instant::now() - Duration::from_millis(start)
-                    ).as_millis();
-                    total_latency += latency;
-                    successful_pings += 1;
+            let start = Instant::now();
+
+            if let Ok(addr) = host.to_socket_addrs() {
+                if let Some(socket_addr) = addr.into_iter().next() {
+                    if TcpStream::connect_timeout(&socket_addr, Duration::from_secs(2)).is_ok() {
+                        let latency = start.elapsed().as_millis();
+                        total_latency += latency;
+                        successful_pings += 1;
+                    }
                 }
             }
         }
@@ -45,43 +45,43 @@ impl NetworkChecker {
         }
     }
 
-    /// Simple download speed test (approximate)
+    /// Download speed test using ureq HTTP client
+    /// Downloads a small file and measures transfer speed
     fn test_download_speed(&self) -> Option<f64> {
-        use std::io::Read;
-
-        // Test download from a reliable source
-        let test_url = "http://speedtest.ftp.otenet.gr/files/test1Mb.db";
+        // Test URL: 10MB file from Cloudflare speed test
+        let test_url = "https://speed.cloudflare.com/__down?bytes=10000000";
 
         let start = Instant::now();
 
-        // Simple HTTP GET (in production, use reqwest crate)
-        if let Ok(mut stream) = TcpStream::connect("speedtest.ftp.otenet.gr:80") {
-            use std::io::Write;
-            let _ = stream.write_all(b"GET /files/test1Mb.db HTTP/1.0\r\nHost: speedtest.ftp.otenet.gr\r\n\r\n");
+        match ureq::get(test_url)
+            .timeout(Duration::from_secs(10))
+            .call()
+        {
+            Ok(response) => {
+                let mut bytes_downloaded = 0usize;
+                let mut buffer = vec![0u8; 8192]; // 8KB buffer
+                let mut reader = response.into_reader();
 
-            let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
-            let mut total_bytes = 0;
-
-            while let Ok(bytes_read) = stream.read(&mut buffer) {
-                if bytes_read == 0 {
-                    break;
+                loop {
+                    match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(n) => bytes_downloaded += n,
+                        Err(_) => break,
+                    }
                 }
-                total_bytes += bytes_read;
 
-                // Stop after 2 seconds or 5MB
-                if start.elapsed().as_secs() > 2 || total_bytes > 5_000_000 {
-                    break;
+                let elapsed = start.elapsed().as_secs_f64();
+
+                if elapsed > 0.0 && bytes_downloaded > 0 {
+                    // Convert to Mbps: (bytes * 8) / (seconds * 1_000_000)
+                    let mbps = (bytes_downloaded as f64 * 8.0) / (elapsed * 1_000_000.0);
+                    Some(mbps)
+                } else {
+                    None
                 }
             }
-
-            let duration = start.elapsed().as_secs_f64();
-            if duration > 0.0 {
-                let mbps = (total_bytes as f64 * 8.0) / (duration * 1_000_000.0);
-                return Some(mbps);
-            }
+            Err(_) => None,
         }
-
-        None
     }
 
     /// Test DNS resolution speed
@@ -117,6 +117,83 @@ impl NetworkChecker {
         std::env::var("HTTPS_PROXY").is_ok() ||
         std::env::var("http_proxy").is_ok() ||
         std::env::var("https_proxy").is_ok()
+    }
+
+    /// Get the name of the active network adapter (Windows)
+    #[cfg(target_os = "windows")]
+    fn get_active_network_adapter(&self) -> Option<String> {
+        use std::process::Command;
+
+        // Use ipconfig to find the active adapter with a default gateway
+        let output = Command::new("ipconfig")
+            .arg("/all")
+            .output()
+            .ok()?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        let mut current_adapter: Option<String> = None;
+        let mut has_gateway = false;
+
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+
+            // New adapter section starts
+            if !trimmed.starts_with(' ') && trimmed.contains("adapter") {
+                // Save previous adapter if it had a gateway
+                if let Some(adapter) = current_adapter.take() {
+                    if has_gateway {
+                        return Some(adapter);
+                    }
+                }
+
+                // Extract adapter name from line like "Ethernet adapter Ethernet:"
+                if let Some(name) = trimmed.split("adapter").nth(1) {
+                    let adapter_name = name.trim_end_matches(':').trim().to_string();
+                    current_adapter = Some(adapter_name);
+                    has_gateway = false;
+                }
+            }
+
+            // Check if this adapter has a default gateway (active connection)
+            if trimmed.contains("Default Gateway") && !trimmed.ends_with(':') {
+                has_gateway = true;
+            }
+        }
+
+        // Check last adapter
+        if let Some(adapter) = current_adapter {
+            if has_gateway {
+                return Some(adapter);
+            }
+        }
+
+        None
+    }
+
+    /// Get active adapter for non-Windows platforms
+    #[cfg(not(target_os = "windows"))]
+    fn get_active_network_adapter(&self) -> Option<String> {
+        // On Linux/macOS, use the interface with default route
+        use std::process::Command;
+
+        let output = Command::new("ip")
+            .args(&["route", "show", "default"])
+            .output()
+            .ok()?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        // Parse line like: "default via 192.168.1.1 dev eth0"
+        for part in stdout.split_whitespace() {
+            if let Some(pos) = stdout.find("dev") {
+                if let Some(interface) = stdout[pos..].split_whitespace().nth(1) {
+                    return Some(interface.to_string());
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -170,8 +247,12 @@ impl Checker for NetworkChecker {
                 impact_category: ImpactCategory::Performance,
                 fix: Some(FixAction {
                     action_id: "fix_dns".to_string(),
-                    label: "Switch to Cloudflare DNS".to_string(),
-                    is_auto_fix: true,
+                    label: if cfg!(target_os = "windows") {
+                        "Change DNS to Cloudflare (1.1.1.1)".to_string()
+                    } else {
+                        "Show DNS Fix Instructions".to_string()
+                    },
+                    is_auto_fix: cfg!(target_os = "windows"),  // Auto-fix on Windows only
                     params: serde_json::json!({}),
                 }),
             });
@@ -187,14 +268,18 @@ impl Checker for NetworkChecker {
                 impact_category: ImpactCategory::Performance,
                 fix: Some(FixAction {
                     action_id: "fix_dns".to_string(),
-                    label: "Switch to Cloudflare DNS".to_string(),
-                    is_auto_fix: true,
+                    label: if cfg!(target_os = "windows") {
+                        "Change DNS to Cloudflare (1.1.1.1)".to_string()
+                    } else {
+                        "Show DNS Fix Instructions".to_string()
+                    },
+                    is_auto_fix: cfg!(target_os = "windows"),  // Auto-fix on Windows only
                     params: serde_json::json!({}),
                 }),
             });
         }
 
-        // Test download speed (optional, may take time)
+        // Download speed test (now enabled with ureq)
         if let Some(speed_mbps) = self.test_download_speed() {
             if speed_mbps < 5.0 {
                 issues.push(Issue {
@@ -233,35 +318,71 @@ impl Checker for NetworkChecker {
                 {
                     use std::process::Command;
 
-                    // Set Cloudflare DNS (1.1.1.1, 1.0.0.1)
-                    let output = Command::new("netsh")
-                        .args(&[
-                            "interface", "ip", "set", "dns",
-                            "name=\"Ethernet\"",
-                            "static", "1.1.1.1", "primary"
-                        ])
-                        .output();
+                    // Find the active network adapter
+                    let adapter_name = self.get_active_network_adapter()
+                        .ok_or_else(|| "Could not detect active network adapter".to_string())?;
 
-                    if output.is_ok() {
-                        // Set secondary DNS
-                        let _ = Command::new("netsh")
-                            .args(&[
-                                "interface", "ip", "add", "dns",
-                                "name=\"Ethernet\"",
-                                "1.0.0.1", "index=2"
-                            ])
-                            .output();
+                    use std::time::Duration;
+                    use crate::util::command::run_with_timeout;
 
-                        return Ok(crate::FixResult {
-                            success: true,
-                            message: "Switched DNS to Cloudflare (1.1.1.1). Restart your browser.".to_string(),
-                            rollback_available: false,
-                            restore_point_id: None,
-                        });
+                    // Set DNS to Cloudflare (1.1.1.1) using netsh with timeout
+                    let output = run_with_timeout({
+                        let mut c = Command::new("netsh");
+                        c.args([
+                            "interface",
+                            "ip",
+                            "set",
+                            "dns",
+                            &format!("name=\"{}\"", adapter_name),
+                            "static",
+                            "1.1.1.1",
+                            "primary",
+                        ]);
+                        c
+                    }, Duration::from_secs(5))
+                    .map_err(|e| format!("Failed to set DNS: {}. You may need administrator privileges.", e))?;
+
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        return Err(format!("Failed to set DNS: {}. Try running as administrator.", stderr));
                     }
+
+                    // Add secondary DNS (1.0.0.1)
+                    let _ = run_with_timeout({
+                        let mut c = Command::new("netsh");
+                        c.args([
+                            "interface",
+                            "ip",
+                            "add",
+                            "dns",
+                            &format!("name=\"{}\"", adapter_name),
+                            "1.0.0.1",
+                            "index=2",
+                        ]);
+                        c
+                    }, Duration::from_secs(5));
+
+                    Ok(crate::FixResult {
+                        success: true,
+                        message: format!(
+                            "DNS changed to Cloudflare (1.1.1.1) on adapter '{}'. \
+                            You may need to restart your browser for changes to take effect.",
+                            adapter_name
+                        ),
+                        rollback_available: true,
+                        restore_point_id: Some(adapter_name.clone()),
+                    })
                 }
 
-                Err("Cannot auto-fix DNS. Manually change DNS to 1.1.1.1 (Cloudflare) or 8.8.8.8 (Google) in network settings.".to_string())
+                #[cfg(not(target_os = "windows"))]
+                {
+                    // For Linux/macOS, provide manual instructions
+                    Err(
+                        "DNS auto-fix is only available on Windows. To manually fix:\n\
+                        Linux: Edit /etc/resolv.conf and add 'nameserver 1.1.1.1'\n\
+                        macOS: System Preferences > Network > Advanced > DNS > Add 1.1.1.1".to_string()
+                    )
+                }
             }
             _ => Err("This issue cannot be fixed automatically.".to_string())
         }

@@ -26,11 +26,10 @@
         "createDir": true,
         "removeDir": false,
         "removeFile": false,
-        "exists": true,
-        "scope": ["$APPDATA", "$APPDATA/**", "$RESOURCE/**"]
+        "exists": true
       },
       "path": {
-        "all": true
+        "all": false
       },
       "process": {
         "all": false,
@@ -39,8 +38,7 @@
       },
       "protocol": {
         "all": false,
-        "asset": true,
-        "assetScope": ["**"]
+        "asset": true
       },
       "notification": {
         "all": true
@@ -60,12 +58,11 @@
       },
       "http": {
         "all": false,
-        "request": false,
-        "scope": []
+        "request": false
       }
     },
     "bundle": {
-      "active": true,
+      "active": false,
       "category": "Utility",
       "copyright": "© 2024 Health & Speed Checker",
       "deb": {
@@ -104,7 +101,7 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://localhost:*; connect-src 'self' ipc: tauri: https://localhost:*"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://localhost:*; connect-src 'self' ipc: tauri: https://localhost:*"
     },
     "updater": {
       "active": false,

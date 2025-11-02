@@ -1,29 +1,26 @@
 // agent/src/checkers/mod.rs
 // Checker implementations for Health & Speed Checker
 
-pub mod firewall;
-pub mod startup;
-pub mod process;
-pub mod os_update;
-pub mod ports;
-
-// New checker modules
+// New checker modules (external files)
 pub mod bloatware;
 pub mod network;
 pub mod smart_disk;
 pub mod storage;
-
-pub use firewall::FirewallChecker;
-pub use startup::StartupAnalyzer;
-pub use process::ProcessMonitor;
-pub use os_update::OsUpdateChecker;
-pub use ports::PortScanner;
+pub mod bottleneck;  // The "Trust Builder" - honest bottleneck analysis
 
 // Export new checkers
 pub use bloatware::BloatwareDetector;
 pub use network::NetworkChecker;
 pub use smart_disk::SmartDiskChecker;
 pub use storage::StorageChecker;
+pub use bottleneck::BottleneckAnalyzer;
+
+// Inline checker modules (defined below)
+pub use firewall::FirewallChecker;
+pub use startup::StartupAnalyzer;
+pub use process::ProcessMonitor;
+pub use os_update::OsUpdateChecker;
+pub use ports::PortScanner;
 
 // =============================================================================
 // FIREWALL CHECKER
@@ -89,11 +86,14 @@ pub mod firewall {
     #[cfg(target_os = "windows")]
     fn check_windows_firewall() -> Result<bool, String> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
-        let output = Command::new("netsh")
-            .args(&["advfirewall", "show", "currentprofile", "state"])
-            .output()
-            .map_err(|e| format!("Failed to check firewall: {}", e))?;
+        let output = run_with_timeout({
+            let mut c = Command::new("netsh");
+            c.args(["advfirewall", "show", "currentprofile", "state"]);
+            c
+        }, Duration::from_secs(5)).map_err(|e| format!("Failed to check firewall: {}", e))?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.contains("ON"))
@@ -102,11 +102,14 @@ pub mod firewall {
     #[cfg(target_os = "windows")]
     fn enable_windows_firewall() -> Result<(), String> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
-        Command::new("netsh")
-            .args(&["advfirewall", "set", "currentprofile", "state", "on"])
-            .output()
-            .map_err(|e| format!("Failed to enable firewall: {}", e))?;
+        run_with_timeout({
+            let mut c = Command::new("netsh");
+            c.args(["advfirewall", "set", "currentprofile", "state", "on"]);
+            c
+        }, Duration::from_secs(5)).map_err(|e| format!("Failed to enable firewall: {}", e))?;
 
         Ok(())
     }
@@ -193,12 +196,15 @@ pub mod startup {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::time::Duration;
+            use crate::util::command::run_with_timeout;
 
             // Check registry startup items
-            let output = Command::new("wmic")
-                .args(&["startup", "get", "name,command", "/format:csv"])
-                .output()
-                .map_err(|e| format!("Failed to get startup items: {}", e))?;
+            let output = run_with_timeout({
+                let mut c = Command::new("wmic");
+                c.args(["startup", "get", "name,command", "/format:csv"]);
+                c
+            }, Duration::from_secs(5)).map_err(|e| format!("Failed to get startup items: {}", e))?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines().skip(2) {
@@ -254,7 +260,7 @@ pub mod process {
             let mut issues = Vec::new();
 
             if let Ok(top_processes) = get_top_cpu_processes(5) {
-                for process in top_processes {
+                for process in &top_processes {
                     if process.cpu_percent > 50.0 && !is_system_process(&process.name) {
                         issues.push(Issue {
                             id: format!("high_cpu_{}", sanitize_id(&process.name)),
@@ -305,44 +311,29 @@ pub mod process {
     }
 
     fn get_top_cpu_processes(limit: usize) -> Result<Vec<ProcessInfo>, String> {
-        let mut processes = Vec::new();
+        use sysinfo::System;
 
-        #[cfg(target_os = "windows")]
-        {
-            use std::process::Command;
+        let mut sys = System::new_all();
 
-            let output = Command::new("wmic")
-                .args(&[
-                    "process",
-                    "get",
-                    "ProcessId,Name,WorkingSetSize,PageFileUsage",
-                    "/format:csv"
-                ])
-                .output()
-                .map_err(|e| format!("Failed to get processes: {}", e))?;
+        // Refresh twice with a delay to get accurate CPU measurements
+        sys.refresh_all();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        sys.refresh_all();
 
-            let stdout = String::from_utf8_lossy(&output.stdout);
-
-            // Parse CSV output (skip header lines)
-            for line in stdout.lines().skip(2).take(limit) {
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 5 {
-                    if let Ok(pid) = parts[3].parse::<u32>() {
-                        if let Ok(memory_bytes) = parts[4].parse::<u64>() {
-                            processes.push(ProcessInfo {
-                                pid,
-                                name: parts[1].to_string(),
-                                cpu_percent: 0.0, // TODO: Get actual CPU usage
-                                memory_mb: (memory_bytes / 1024 / 1024) as f32,
-                            });
-                        }
-                    }
+        let mut processes: Vec<ProcessInfo> = sys.processes()
+            .iter()
+            .map(|(pid, process)| {
+                ProcessInfo {
+                    pid: pid.as_u32(),
+                    name: process.name().to_string(),
+                    cpu_percent: process.cpu_usage(),
+                    memory_mb: (process.memory() / 1024 / 1024) as f32,
                 }
-            }
-        }
+            })
+            .collect();
 
-        // Sort by memory usage for now (since we don't have CPU data yet)
-        processes.sort_by(|a, b| b.memory_mb.partial_cmp(&a.memory_mb).unwrap());
+        // Sort by CPU usage (descending)
+        processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
         processes.truncate(limit);
 
         Ok(processes)
@@ -470,6 +461,7 @@ pub mod os_update {
 pub mod ports {
     use crate::*;
     use std::collections::HashSet;
+    use rayon::prelude::*;
 
     pub struct PortScanner;
 
@@ -531,27 +523,31 @@ pub mod ports {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::time::Duration;
+            use crate::util::command::run_with_timeout;
 
-            let output = Command::new("netstat")
-                .args(&["-an"])
-                .output()
-                .map_err(|e| format!("Failed to scan ports: {}", e))?;
+            let output = run_with_timeout({
+                let mut c = Command::new("netstat");
+                c.args(["-an"]);
+                c
+            }, Duration::from_secs(5)).map_err(|e| format!("Failed to scan ports: {}", e))?;
 
             let stdout = String::from_utf8_lossy(&output.stdout);
 
-            let mut seen_ports = HashSet::new();
-
-            for line in stdout.lines() {
-                if line.contains("LISTENING") {
+            // Parallel processing of netstat output lines using rayon
+            let parsed_ports: Vec<Option<PortInfo>> = stdout
+                .lines()
+                .par_bridge()  // Convert iterator to parallel iterator
+                .filter(|line| line.contains("LISTENING"))
+                .map(|line| {
                     // Parse lines like "  TCP    0.0.0.0:3389           0.0.0.0:0              LISTENING"
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if parts.len() >= 2 {
                         if let Some(addr) = parts.get(1) {
                             if let Some(port_str) = addr.split(':').last() {
                                 if let Ok(port) = port_str.parse::<u16>() {
-                                    if !seen_ports.contains(&port) && port < 10000 {
-                                        seen_ports.insert(port);
-                                        ports.push(PortInfo {
+                                    if port < 10000 {
+                                        return Some(PortInfo {
                                             port,
                                             protocol: "TCP".to_string(),
                                             service: get_service_name(port),
@@ -562,6 +558,16 @@ pub mod ports {
                             }
                         }
                     }
+                    None
+                })
+                .collect();
+
+            // Deduplicate ports
+            let mut seen_ports = HashSet::new();
+            for port_info in parsed_ports.into_iter().flatten() {
+                if !seen_ports.contains(&port_info.port) {
+                    seen_ports.insert(port_info.port);
+                    ports.push(port_info);
                 }
             }
         }

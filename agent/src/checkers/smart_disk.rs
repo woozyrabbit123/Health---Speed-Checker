@@ -3,6 +3,8 @@
 
 use crate::{Checker, CheckCategory, Issue, IssueSeverity, ImpactCategory, ScanContext};
 use std::process::Command;
+use std::time::Duration;
+use crate::util::command::run_with_timeout;
 
 pub struct SmartDiskChecker;
 
@@ -16,9 +18,11 @@ impl SmartDiskChecker {
         let mut issues = Vec::new();
 
         // Use WMIC to query disk health
-        let output = Command::new("wmic")
-            .args(&["diskdrive", "get", "status,model,size", "/format:csv"])
-            .output();
+        let output = run_with_timeout({
+            let mut c = Command::new("wmic");
+            c.args(["diskdrive", "get", "status,model,size", "/format:csv"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -47,9 +51,11 @@ impl SmartDiskChecker {
         }
 
         // Check for low disk space
-        let space_output = Command::new("wmic")
-            .args(&["logicaldisk", "get", "size,freespace,caption", "/format:csv"])
-            .output();
+        let space_output = run_with_timeout({
+            let mut c = Command::new("wmic");
+            c.args(["logicaldisk", "get", "size,freespace,caption", "/format:csv"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = space_output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -100,9 +106,11 @@ impl SmartDiskChecker {
         let mut issues = Vec::new();
 
         // Check S.M.A.R.T. status
-        let output = Command::new("diskutil")
-            .args(&["info", "disk0"])
-            .output();
+        let output = run_with_timeout({
+            let mut c = Command::new("diskutil");
+            c.args(["info", "disk0"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -120,9 +128,11 @@ impl SmartDiskChecker {
         }
 
         // Check disk space
-        let df_output = Command::new("df")
-            .args(&["-h"])
-            .output();
+        let df_output = run_with_timeout({
+            let mut c = Command::new("df");
+            c.args(["-h"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = df_output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -163,9 +173,11 @@ impl SmartDiskChecker {
         let mut issues = Vec::new();
 
         // Check S.M.A.R.T. status using smartctl (if available)
-        let smart_output = Command::new("smartctl")
-            .args(&["-H", "/dev/sda"])
-            .output();
+        let smart_output = run_with_timeout({
+            let mut c = Command::new("smartctl");
+            c.args(["-H", "/dev/sda"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = smart_output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -183,9 +195,11 @@ impl SmartDiskChecker {
         }
 
         // Check disk space
-        let df_output = Command::new("df")
-            .args(&["-h"])
-            .output();
+        let df_output = run_with_timeout({
+            let mut c = Command::new("df");
+            c.args(["-h"]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = df_output {
             let stdout = String::from_utf8_lossy(&output.stdout);

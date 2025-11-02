@@ -1,0 +1,359 @@
+/* License Dialog Overlay */
+.license-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+/* License Dialog Container */
+.license-dialog {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Header */
+.license-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.license-dialog-header h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 32px;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Content */
+.license-dialog-content {
+  padding: 28px;
+}
+
+/* License Status Section */
+.license-status {
+  text-align: center;
+  margin-bottom: 28px;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.license-status h3 {
+  margin: 0 0 12px 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.license-badge {
+  display: inline-block;
+  padding: 8px 24px;
+  border-radius: 20px;
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.license-badge.free {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+}
+
+.license-badge.trial {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #ffffff;
+}
+
+.license-badge.pro {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: #ffffff;
+}
+
+.trial-info {
+  margin: 8px 0 0 0;
+  color: #f5576c;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.license-key-info {
+  margin: 8px 0 0 0;
+  color: #00f2fe;
+  font-size: 13px;
+  font-family: 'Courier New', monospace;
+}
+
+/* Features Section */
+.features-section {
+  margin-bottom: 24px;
+}
+
+.features-section h4 {
+  margin: 0 0 12px 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.features-list li {
+  padding: 10px 0;
+  color: #ffffff;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.features-list li.available .feature-icon {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+.features-list li.unavailable {
+  opacity: 0.5;
+}
+
+.features-list li.unavailable .feature-icon {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* Messages */
+.message {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.message.error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.message.success {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: #6ee7b7;
+}
+
+/* Trial Section */
+.trial-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(245, 87, 108, 0.1) 0%, rgba(240, 147, 251, 0.1) 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(245, 87, 108, 0.2);
+}
+
+.trial-section h4 {
+  margin: 0 0 8px 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.trial-section p {
+  margin: 0 0 16px 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.btn-trial {
+  width: 100%;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-trial:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(245, 87, 108, 0.4);
+}
+
+.btn-trial:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Activation Section */
+.activation-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(79, 172, 254, 0.1) 0%, rgba(0, 242, 254, 0.1) 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(79, 172, 254, 0.2);
+}
+
+.activation-section h4 {
+  margin: 0 0 8px 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.activation-section p {
+  margin: 0 0 16px 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.activation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.license-input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  font-family: 'Courier New', monospace;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.license-input:focus {
+  outline: none;
+  border-color: #4facfe;
+}
+
+.license-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.btn-activate {
+  width: 100%;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-activate:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(79, 172, 254, 0.4);
+}
+
+.btn-activate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Purchase Section */
+.purchase-section {
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.purchase-text {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.purchase-link {
+  color: #4facfe;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.purchase-link:hover {
+  color: #00f2fe;
+  text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  .license-dialog {
+    width: 95%;
+    max-width: none;
+  }
+
+  .license-dialog-header {
+    padding: 20px;
+  }
+
+  .license-dialog-content {
+    padding: 20px;
+  }
+
+  .license-dialog-header h2 {
+    font-size: 20px;
+  }
+}

@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use health_speed_checker::*;
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Parser)]
@@ -158,6 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     tracing_subscriber::fmt::init();
 
+    let (db_path, license_path) = resolve_data_paths();
+    let _automation_daemon = daemon::start_automation_daemon(db_path, license_path);
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -184,6 +188,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn resolve_data_paths() -> (PathBuf, PathBuf) {
+    let base_dir = std::env::var("APPDATA")
+        .or_else(|_| std::env::var("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    let root_dir = base_dir.join("HealthSpeedChecker");
+    if let Err(err) = std::fs::create_dir_all(&root_dir) {
+        tracing::warn!(
+            "Failed to ensure data directory {}: {}",
+            root_dir.display(),
+            err
+        );
+    }
+
+    let db_path = root_dir.join("app.db");
+    let license_path = root_dir.join("license.json");
+    (db_path, license_path)
+}
+
 async fn handle_scan(
     security_only: bool,
     performance_only: bool,
@@ -204,11 +228,23 @@ async fn handle_scan(
 
     // Register all checkers
     use checkers::*;
+
+    // Core checkers (security + performance basics)
     engine.register(Box::new(FirewallChecker));
     engine.register(Box::new(StartupAnalyzer));
     engine.register(Box::new(ProcessMonitor));
     engine.register(Box::new(OsUpdateChecker));
     engine.register(Box::new(PortScanner));
+
+    // Advanced checkers (deeper analysis)
+    engine.register(Box::new(checkers::bloatware::BloatwareDetector::new()));
+    engine.register(Box::new(checkers::network::NetworkChecker::new()));
+    engine.register(Box::new(checkers::smart_disk::SmartDiskChecker::new()));
+    engine.register(Box::new(checkers::storage::StorageChecker::new()));
+
+    // The "Trust Builder" - honest hardware bottleneck analysis
+    // This is what differentiates us from scare-tactic competitors
+    engine.register(Box::new(checkers::bottleneck::BottleneckAnalyzer::new()));
 
     // Show progress for human output
     let progress = if matches!(output, OutputFormat::Human) {
@@ -245,7 +281,7 @@ async fn handle_scan(
     }
 
     // Run the scan
-    let result = engine.scan(options).await;
+    let result = engine.scan(options);
 
     if let Some(pb) = progress {
         pb.set_position(100);
@@ -270,16 +306,17 @@ async fn handle_scan(
         }
     }
 
-    // Set exit code based on severity
-    let exit_code = if result.issues.iter().any(|i| i.severity == IssueSeverity::Critical) {
-        2
-    } else if result.issues.iter().any(|i| i.severity == IssueSeverity::Warning) {
-        1
-    } else {
-        0
-    };
+    // Treat critical findings as failures, but allow warnings to succeed so automated
+    // workflows (like quick health checks) don't error out on advisory issues alone.
+    if result
+        .issues
+        .iter()
+        .any(|issue| issue.severity == IssueSeverity::Critical)
+    {
+        std::process::exit(2);
+    }
 
-    std::process::exit(exit_code);
+    Ok(())
 }
 
 fn print_human_readable(result: &ScanResult) {
@@ -433,7 +470,7 @@ async fn handle_fix(issue_id: String, auto_confirm: bool) -> Result<(), Box<dyn 
 
     // Initialize scanner to use fix functionality
     let engine = ScannerEngine::new();
-    let result = engine.fix_issue(&issue_id, &serde_json::json!({})).await;
+    let result = engine.fix_issue(&issue_id, &serde_json::json!({}));
 
     if result.success {
         println!("{} {}", "✓".green(), result.message);

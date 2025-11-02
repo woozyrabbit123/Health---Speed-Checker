@@ -1,8 +1,9 @@
 // ui/src/App.tsx
 // Main React component for Health & Speed Checker
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/tauri';
+import { listen } from '@tauri-apps/api/event';
 import {
   Shield,
   Zap,
@@ -14,12 +15,17 @@ import {
   Settings,
   X,
   ChevronRight,
-  Activity
+  Activity,
+  ScrollText
 } from 'lucide-react';
 import './App.css';
 import { QuickActions } from './components/QuickActions';
 import { ExportDialog } from './components/ExportDialog';
 import { TrendsChart } from './components/TrendsChart';
+import AutomationPage from './components/AutomationPage';
+import BottleneckReport from './components/BottleneckReport';
+import ChangelogPage from './components/ChangelogPage';
+import LicenseDialog from './components/LicenseDialog';
 import { useKeyboardShortcuts, useShortcutsModal, KeyboardShortcutsModal } from './hooks/useKeyboardShortcuts';
 
 interface ScanResult {
@@ -46,6 +52,7 @@ interface Issue {
     action_id: string;
     label: string;
     is_auto_fix: boolean;
+    params?: Record<string, unknown>;
   };
 }
 
@@ -59,18 +66,32 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [currentTab, setCurrentTab] = useState<'overview' | 'security' | 'performance'>('overview');
   const [ignoredIssues, setIgnoredIssues] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [scanHistory, setScanHistory] = useState<Array<{timestamp: number, health: number, speed: number}>>([]);
+  const [scanHistory, setScanHistory] = useState<Array<{scan_id?: string; timestamp: number; health: number; speed: number}>>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [fixingIssueId, setFixingIssueId] = useState<string | null>(null);
+  const [showLicenseDialog, setShowLicenseDialog] = useState(false);
+  const [activePage, setActivePage] = useState<'dashboard' | 'automation' | 'changelog'>('dashboard');
 
-  // Filter visible issues
-  const visibleIssues = scanResult?.issues.filter(
-    (issue) => !ignoredIssues.has(issue.id)
-  ) || [];
+  const navButtonClass = (page: 'dashboard' | 'automation' | 'changelog') =>
+    `flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+      activePage === page ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white hover:bg-gray-800'
+    }`;
+
+  const bottleneckIssues = useMemo(
+    () => scanResult?.issues.filter((issue) => issue.id.startsWith('bottleneck_')) ?? [],
+    [scanResult]
+  );
+
+  const visibleIssues = useMemo(
+    () =>
+      scanResult?.issues.filter(
+        (issue) => !issue.id.startsWith('bottleneck_') && !ignoredIssues.has(issue.id)
+      ) ?? [],
+    [scanResult, ignoredIssues]
+  );
 
   // Auto-dismiss messages after 5 seconds
   useEffect(() => {
@@ -87,6 +108,50 @@ function App() {
     }
   }, [successMessage]);
 
+  // Load scan history on startup
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const history = await invoke<Array<{ scan_id: string; timestamp: number; health_score: number; speed_score: number }>>('get_scan_history');
+        setScanHistory(
+          history.map(item => ({
+            scan_id: item.scan_id,
+            timestamp: item.timestamp,
+            health: item.health_score,
+            speed: item.speed_score,
+          }))
+        );
+      } catch (error) {
+        console.error('Failed to load scan history', error);
+      }
+    };
+
+    loadHistory();
+  }, []);
+
+  // Listen for tray events
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    const setup = async () => {
+      try {
+        unlisten = await listen('tray-action', (event) => {
+          console.log('Tray action:', event.payload);
+        });
+      } catch (error) {
+        console.error('Failed to listen for tray actions', error);
+      }
+    };
+
+    setup();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
   // Initialize keyboard shortcuts
   const shortcuts = useKeyboardShortcuts({
     scan: () => !scanning && startScan(false),
@@ -94,10 +159,14 @@ function App() {
     fix: () => {
       const topIssue = visibleIssues[0];
       if (topIssue?.fix) {
-        fixIssue(topIssue.fix.action_id, {}, topIssue.id);
+        fixIssue(topIssue.fix.action_id, {}, topIssue.id, topIssue.fix.is_auto_fix);
       }
     },
-    export: () => scanResult && setShowExportDialog(true),
+    export: () => {
+      if (scanResult) {
+        void openExportDialog();
+      }
+    },
     cancel: () => {
       setShowExportDialog(false);
     },
@@ -105,6 +174,40 @@ function App() {
 
   // Shortcuts modal
   const { isVisible: showShortcutsModal, close: closeShortcutsModal } = useShortcutsModal();
+
+  const checkFeatureAccess = async (feature: string) => {
+    try {
+      return await invoke<boolean>('check_feature_access', { feature_name: feature });
+    } catch (error) {
+      console.error(`Failed to check feature access for ${feature}`, error);
+      return false;
+    }
+  };
+
+  const requireFeature = async (feature: string) => {
+    const allowed = await checkFeatureAccess(feature);
+    if (!allowed) {
+      setShowLicenseDialog(true);
+    }
+    return allowed;
+  };
+
+  const requireAnyFeature = async (features: string[]) => {
+    const results = await Promise.all(features.map(checkFeatureAccess));
+    if (results.some(Boolean)) {
+      return true;
+    }
+    setShowLicenseDialog(true);
+    return false;
+  };
+
+  const openExportDialog = async () => {
+    const allowed = await requireAnyFeature(['export_pdf', 'export_csv']);
+    if (!allowed) {
+      return;
+    }
+    setShowExportDialog(true);
+  };
 
   // Start a scan
   const startScan = async (quick: boolean = false) => {
@@ -147,6 +250,7 @@ function App() {
 
         // Add to history
         setScanHistory(prev => [...prev, {
+          scan_id: result.scan_id,
           timestamp: result.timestamp,
           health: result.scores.health,
           speed: result.scores.speed,
@@ -165,10 +269,23 @@ function App() {
   };
 
   // Fix an issue
-  const fixIssue = async (actionId: string, params: any, issueId?: string) => {
+  const fixIssue = async (actionId: string, params: any, issueId?: string, isAutoFix: boolean = false) => {
+    if (isAutoFix) {
+      const allowed = await requireFeature('auto_fix');
+      if (!allowed) {
+        return;
+      }
+    }
+
+    const confirmed = window.confirm('Are you sure you want to apply this fix?');
+    if (!confirmed) {
+      return;
+    }
+
     if (issueId) setFixingIssueId(issueId);
     try {
-      const result = await invoke<{success: boolean, message: string}>('fix_action', { actionId, params });
+      const payload = { ...params, confirm: true };
+      const result = await invoke<{success: boolean, message: string}>('fix_action', { actionId, params: payload });
       if (result.success) {
         setSuccessMessage(result.message);
         // Refresh scan after fix
@@ -179,7 +296,7 @@ function App() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to apply fix. Please try manually.');
     } finally {
-      setFixingIssueId(null);
+      if (issueId) setFixingIssueId(null);
     }
   };
 
@@ -218,177 +335,202 @@ function App() {
             <Activity className="w-8 h-8 text-blue-500" />
             <h1 className="text-2xl font-bold">Health & Speed Checker</h1>
           </div>
-          <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
-            <Settings className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center bg-gray-900/60 border border-gray-800 rounded-lg p-1 gap-1">
+              <button
+                onClick={() => setActivePage('dashboard')}
+                className={navButtonClass('dashboard')}
+              >
+                <Shield className="w-4 h-4" />
+                <span className="text-sm font-medium">Dashboard</span>
+              </button>
+              <button
+                onClick={() => setActivePage('automation')}
+                className={navButtonClass('automation')}
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-sm font-medium">Automation</span>
+              </button>
+              <button
+                onClick={() => setActivePage('changelog')}
+                className={navButtonClass('changelog')}
+              >
+                <ScrollText className="w-4 h-4" />
+                <span className="text-sm font-medium">Changelog</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setShowLicenseDialog(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-lg transition-colors text-sm font-semibold"
+            >
+              Upgrade to Pro
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="p-6">
-        {!scanning && !scanResult && (
-          <div className="max-w-4xl mx-auto">
-            {/* Welcome Screen */}
-            <div className="text-center py-16">
-              <div className="flex justify-center space-x-8 mb-12">
-                <div className="text-center">
-                  <Shield className="w-16 h-16 mx-auto mb-4 text-blue-500" />
-                  <h3 className="text-xl font-semibold">Security Check</h3>
-                  <p className="text-gray-400 mt-2">Scan for vulnerabilities</p>
-                </div>
-                <div className="text-center">
-                  <Zap className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
-                  <h3 className="text-xl font-semibold">Speed Analysis</h3>
-                  <p className="text-gray-400 mt-2">Find performance issues</p>
-                </div>
-              </div>
-
-              <div className="flex justify-center space-x-4">
-                <button
-                  onClick={() => startScan(false)}
-                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-                >
-                  <Play className="w-5 h-5" />
-                  <span>Full Scan</span>
-                </button>
-                <button
-                  onClick={() => startScan(true)}
-                  className="flex items-center space-x-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  <Zap className="w-5 h-5" />
-                  <span>Quick Scan (5s)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {scanning && (
-          <div className="max-w-2xl mx-auto py-16">
-            {/* Progress Screen */}
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-8">Scanning Your System...</h2>
-
-              <div className="mb-4">
-                <div className="bg-gray-800 rounded-full h-4 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-500"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-
-              <p className="text-gray-400">{progressMessage}</p>
-              <p className="text-sm text-gray-500 mt-2">{progress}%</p>
-            </div>
-          </div>
-        )}
-
-        {scanResult && !scanning && (
-          <div className="max-w-6xl mx-auto">
-            {/* Results Screen */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {/* Health Score Card */}
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center">
-                    <Shield className="w-5 h-5 mr-2 text-blue-500" />
-                    Health Score
-                  </h3>
-                  {scanResult.scores.health_delta && (
-                    <span className={scanResult.scores.health_delta > 0 ? 'text-green-500' : 'text-red-500'}>
-                      {scanResult.scores.health_delta > 0 ? '↑' : '↓'}
-                      {Math.abs(scanResult.scores.health_delta)}
-                    </span>
-                  )}
-                </div>
-                <div className="text-center">
-                  <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.health)}`}>
-                    {scanResult.scores.health}
+        {activePage === 'automation' ? (
+          <AutomationPage onUpgrade={() => setShowLicenseDialog(true)} />
+        ) : activePage === 'changelog' ? (
+          <ChangelogPage />
+        ) : (
+          <>
+            {!scanning && !scanResult && (
+              <div className="max-w-4xl mx-auto">
+                {/* Welcome Screen */}
+                <div className="text-center py-16">
+                  <div className="flex justify-center space-x-8 mb-12">
+                    <div className="text-center">
+                      <Shield className="w-16 h-16 mx-auto mb-4 text-blue-500" />
+                      <h3 className="text-xl font-semibold">Security Check</h3>
+                      <p className="text-gray-400 mt-2">Scan for vulnerabilities</p>
+                    </div>
+                    <div className="text-center">
+                      <Zap className="w-16 h-16 mx-auto mb-4 text-yellow-500" />
+                      <h3 className="text-xl font-semibold">Speed Analysis</h3>
+                      <p className="text-gray-400 mt-2">Find performance issues</p>
+                    </div>
                   </div>
-                  <div className="text-gray-400 mt-2">out of 100</div>
-                </div>
-              </div>
 
-              {/* Speed Score Card */}
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center">
-                    <Zap className="w-5 h-5 mr-2 text-yellow-500" />
-                    Speed Score
-                  </h3>
-                  {scanResult.scores.speed_delta && (
-                    <span className={scanResult.scores.speed_delta > 0 ? 'text-green-500' : 'text-red-500'}>
-                      {scanResult.scores.speed_delta > 0 ? '↑' : '↓'}
-                      {Math.abs(scanResult.scores.speed_delta)}
-                    </span>
-                  )}
-                </div>
-                <div className="text-center">
-                  <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.speed)}`}>
-                    {scanResult.scores.speed}
+                  <div className="flex justify-center space-x-4">
+                    <button
+                      onClick={() => startScan(false)}
+                      className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                    >
+                      <Play className="w-5 h-5" />
+                      <span>Full Scan</span>
+                    </button>
+                    <button
+                      onClick={() => startScan(true)}
+                      className="flex items-center space-x-2 px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                    >
+                      <Zap className="w-5 h-5" />
+                      <span>Quick Scan (5s)</span>
+                    </button>
                   </div>
-                  <div className="text-gray-400 mt-2">out of 100</div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Tabs */}
-            <div className="border-b border-gray-800 mb-6">
-              <div className="flex space-x-6">
-                {['overview', 'security', 'performance'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => setCurrentTab(tab as any)}
-                    className={`pb-3 px-1 border-b-2 transition-colors capitalize ${
-                      currentTab === tab
-                        ? 'border-blue-500 text-blue-500'
-                        : 'border-transparent text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+            {scanning && (
+              <div className="max-w-2xl mx-auto py-16">
+                {/* Progress Screen */}
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold mb-8">Scanning Your System...</h2>
+
+                  <div className="mb-4">
+                    <div className="bg-gray-800 rounded-full h-4 overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-full transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-gray-400">{progressMessage}</p>
+                  <p className="text-sm text-gray-500 mt-2">{progress}%</p>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Issues List */}
-            <div className="space-y-4">
-              {currentTab === 'overview' && (
-                <>
-                  <h3 className="text-xl font-semibold mb-4">
+            {scanResult && !scanning && (
+              <div className="max-w-6xl mx-auto">
+                {bottleneckIssues.length > 0 && (
+                  <div className="mb-10">
+                    {bottleneckIssues.map((issue) => (
+                      <BottleneckReport
+                        key={issue.id}
+                        issue={issue}
+                        onFix={(fix) => fixIssue(fix.action_id, fix.params ?? {}, issue.id, fix.is_auto_fix)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Results Screen */}
+                <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  {/* Health Score Card */}
+                  <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="flex items-center text-lg font-semibold">
+                        <Shield className="mr-2 h-5 w-5 text-blue-500" />
+                        Health Score
+                      </h3>
+                      {scanResult.scores.health_delta && (
+                        <span className={scanResult.scores.health_delta > 0 ? 'text-green-500' : 'text-red-500'}>
+                          {scanResult.scores.health_delta > 0 ? '+' : '-'}
+                          {Math.abs(scanResult.scores.health_delta)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.health)}`}>
+                        {scanResult.scores.health}
+                      </div>
+                      <div className="mt-2 text-gray-400">out of 100</div>
+                    </div>
+                  </div>
+
+                  {/* Speed Score Card */}
+                  <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="flex items-center text-lg font-semibold">
+                        <Zap className="mr-2 h-5 w-5 text-yellow-500" />
+                        Speed Score
+                      </h3>
+                      {scanResult.scores.speed_delta && (
+                        <span className={scanResult.scores.speed_delta > 0 ? 'text-green-500' : 'text-red-500'}>
+                          {scanResult.scores.speed_delta > 0 ? '+' : '-'}
+                          {Math.abs(scanResult.scores.speed_delta)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <div className={`text-5xl font-bold ${getScoreColor(scanResult.scores.speed)}`}>
+                        {scanResult.scores.speed}
+                      </div>
+                      <div className="mt-2 text-gray-400">out of 100</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Issues List */}
+                <div className="space-y-4">
+                  <h3 className="mb-4 text-xl font-semibold">
                     Top Issues ({visibleIssues.length})
                   </h3>
 
                   {visibleIssues.slice(0, 5).map((issue) => (
                     <div
                       key={issue.id}
-                      className="bg-gray-900 rounded-lg p-4 border border-gray-800"
+                      className="rounded-lg border border-gray-800 bg-gray-900 p-4"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
+                          <div className="mb-2 flex items-center space-x-2">
                             {getSeverityIcon(issue.severity)}
                             <span className="font-semibold">{issue.title}</span>
                           </div>
-                          <p className="text-gray-400 text-sm mb-3">
+                          <p className="mb-3 text-sm text-gray-400">
                             {issue.description}
                           </p>
                           <div className="flex items-center space-x-3">
                             {issue.fix && (
                               <button
-                                onClick={() => fixIssue(issue.fix!.action_id, {}, issue.id)}
+                                onClick={() => fixIssue(issue.fix!.action_id, {}, issue.id, issue.fix.is_auto_fix)}
                                 disabled={fixingIssueId === issue.id}
-                                className="flex items-center space-x-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm transition-colors"
+                                className="flex items-center space-x-1 rounded bg-blue-600 px-3 py-1 text-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-600"
                               >
                                 {fixingIssueId === issue.id ? (
                                   <>
-                                    <div className="spinner w-4 h-4" />
+                                    <div className="spinner h-4 w-4" />
                                     <span>Fixing...</span>
                                   </>
                                 ) : (
                                   <>
-                                    <CheckCircle className="w-4 h-4" />
+                                    <CheckCircle className="h-4 w-4" />
                                     <span>{issue.fix.label}</span>
                                   </>
                                 )}
@@ -396,7 +538,7 @@ function App() {
                             )}
                             <button
                               onClick={() => ignoreIssue(issue.id)}
-                              className="text-gray-400 hover:text-white text-sm"
+                              className="text-sm text-gray-400 transition-colors hover:text-white"
                             >
                               Ignore
                             </button>
@@ -407,65 +549,67 @@ function App() {
                   ))}
 
                   {visibleIssues.length > 5 && (
-                    <p className="text-center text-gray-400 py-4">
+                    <p className="py-4 text-center text-gray-400">
                       And {visibleIssues.length - 5} more issues...
                     </p>
                   )}
-                </>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-center space-x-4 mt-8">
-              <button
-                onClick={() => startScan(false)}
-                className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <Play className="w-4 h-4" />
-                <span>Scan Again</span>
-              </button>
-              <button
-                onClick={() => setShowExportDialog(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export Report</span>
-              </button>
-            </div>
-
-            {/* Trends Chart */}
-            {scanHistory.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-xl font-semibold mb-4">Historical Trends</h3>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <TrendsChart
-                    data={scanHistory}
-                    type="health"
-                  />
-                  <TrendsChart
-                    data={scanHistory}
-                    type="speed"
-                  />
                 </div>
+
+                {/* Action Buttons */}
+                <div className="mt-8 flex justify-center space-x-4">
+                  <button
+                    onClick={() => startScan(false)}
+                    className="flex items-center space-x-2 rounded-lg bg-gray-800 px-4 py-2 transition-colors hover:bg-gray-700"
+                  >
+                    <Play className="h-4 w-4" />
+                    <span>Scan Again</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (scanResult) {
+                        void openExportDialog();
+                      }
+                    }}
+                    className="flex items-center space-x-2 rounded-lg bg-gray-800 px-4 py-2 transition-colors hover:bg-gray-700"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Export Report</span>
+                  </button>
+                </div>
+
+                {/* Trends Chart */}
+                {scanHistory.length > 0 && (
+                  <div className="mt-8">
+                    <h3 className="mb-4 text-xl font-semibold">Historical Trends</h3>
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <TrendsChart data={scanHistory} type="health" />
+                      <TrendsChart data={scanHistory} type="speed" />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
         )}
       </main>
 
       {/* Quick Actions Widget */}
-      {!scanning && (
+      {activePage === 'dashboard' && !scanning && (
         <QuickActions
           onScanQuick={() => startScan(true)}
           onScanFull={() => startScan(false)}
           onFixTop={() => {
             const topIssue = visibleIssues[0];
             if (topIssue?.fix) {
-              fixIssue(topIssue.fix.action_id, {}, topIssue.id);
+              fixIssue(topIssue.fix.action_id, topIssue.fix.params ?? {}, topIssue.id, topIssue.fix.is_auto_fix);
             }
           }}
-          onExport={() => scanResult && setShowExportDialog(true)}
-          onHistory={() => setErrorMessage('History feature coming soon!')}
+          onExport={() => {
+            if (scanResult) {
+              void openExportDialog();
+            }
+          }}
+          onHistory={() => setSuccessMessage('Showing latest scan history below.')}
           isScanning={scanning}
           healthScore={scanResult?.scores.health}
         />
@@ -509,6 +653,11 @@ function App() {
           </button>
         </div>
       )}
+
+      <LicenseDialog
+        isOpen={showLicenseDialog}
+        onClose={() => setShowLicenseDialog(false)}
+      />
     </div>
   );
 }

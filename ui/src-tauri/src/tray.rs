@@ -121,22 +121,23 @@ pub fn handle_tray_event(app: &AppHandle, event: SystemTrayEvent) {
 
 /// Update tray icon based on health score
 pub fn update_tray_icon(app: &AppHandle, health_score: u32) {
-    if let Some(tray) = app.tray_handle().get_item("health_score") {
-        let icon_name = match health_score {
-            0..=50 => "critical",
-            51..=75 => "warning",
-            76..=100 => "healthy",
-            _ => "unknown",
-        };
+    // Access the menu item handle to ensure it exists (future updates may use it)
+    let _ = app.tray_handle().get_item("health_score");
 
-        // Update tooltip
-        let tooltip = format!("Health & Speed Checker\nHealth: {}/100", health_score);
-        let _ = app.tray_handle().set_tooltip(&tooltip);
+    let _icon_name = match health_score {
+        0..=50 => "critical",
+        51..=75 => "warning",
+        76..=100 => "healthy",
+        _ => "unknown",
+    };
 
-        // In production, would update icon based on health_score
-        // let icon_path = format!("icons/tray-{}.png", icon_name);
-        // let _ = app.tray_handle().set_icon(tauri::Icon::File(icon_path.into()));
-    }
+    // Update tooltip
+    let tooltip = format!("Health & Speed Checker\nHealth: {}/100", health_score);
+    let _ = app.tray_handle().set_tooltip(&tooltip);
+
+    // In production, would update icon based on health_score
+    // let icon_path = format!("icons/tray-{}.png", icon_name);
+    // let _ = app.tray_handle().set_icon(tauri::Icon::File(icon_path.into()));
 }
 
 /// Show desktop notification

@@ -17,9 +17,27 @@ tauri-build = { version = "1.5", features = [] }
 health_speed_checker = { path = "../../agent" }
 
 # Tauri
-tauri = { version = "1.5", features = ["shell-open", "dialog-all", "fs-all", "notification-all", "path-all", "process-exit", "process-relaunch", "clipboard-write-text"] }
+tauri = { version = "1.5", features = [
+    "shell-open",
+    "dialog-ask",
+    "dialog-confirm",
+    "dialog-message",
+    "dialog-save",
+    "fs-create-dir",
+    "fs-exists",
+    "fs-read-dir",
+    "fs-read-file",
+    "fs-write-file",
+    "notification-all",
+    "process-exit",
+    "process-relaunch",
+    "clipboard-write-text",
+    "protocol-asset",
+    "system-tray"
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
@@ -31,6 +49,13 @@ tracing-subscriber = "0.3"
 # Error handling
 anyhow = "1.0"
 thiserror = "1.0"
+
+# System utilities
+hostname = "0.3"
+
+# PDF generation
+printpdf = "0.7"  # PDF export functionality
+base64 = "0.21"   # Base64 encoding for PDF export
 
 [features]
 # By default, Tauri runs in production mode when you build

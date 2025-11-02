@@ -1,8 +1,8 @@
 // Storage & Drive Health Checker
 // Comprehensive storage analysis and health monitoring
 
-use crate::{Checker, CheckCategory, Issue, IssueSeverity, ScanContext, ImpactCategory, FixAction};
-use std::path::Path;
+use crate::{Checker, CheckCategory, Issue, IssueSeverity, ScanContext, ImpactCategory};
+use std::process::Command;
 
 pub struct StorageChecker;
 
@@ -15,17 +15,21 @@ impl StorageChecker {
     #[cfg(target_os = "windows")]
     fn get_drive_info(&self) -> Vec<DriveInfo> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
         let mut drives = Vec::new();
 
-        let output = Command::new("wmic")
-            .args(&[
+        let output = run_with_timeout({
+            let mut c = Command::new("wmic");
+            c.args([
                 "logicaldisk",
                 "get",
                 "Caption,DriveType,FileSystem,FreeSpace,Size,VolumeName",
-                "/format:csv"
-            ])
-            .output();
+                "/format:csv",
+            ]);
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -51,7 +55,6 @@ impl StorageChecker {
                                     name: caption.trim().to_string(),
                                     total_bytes,
                                     free_bytes,
-                                    used_bytes: total_bytes - free_bytes,
                                     drive_type: self.parse_drive_type(parts.get(2)),
                                     file_system: parts.get(4).map(|s| s.trim().to_string()),
                                 });
@@ -68,12 +71,16 @@ impl StorageChecker {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     fn get_drive_info(&self) -> Vec<DriveInfo> {
         use std::process::Command;
+        use std::time::Duration;
+        use crate::util::command::run_with_timeout;
 
         let mut drives = Vec::new();
 
-        let output = Command::new("df")
-            .args(&["-B1"]) // Output in bytes
-            .output();
+        let output = run_with_timeout({
+            let mut c = Command::new("df");
+            c.args(["-B1"]); // Output in bytes
+            c
+        }, Duration::from_secs(5));
 
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -81,7 +88,7 @@ impl StorageChecker {
             for line in stdout.lines().skip(1) {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 6 {
-                    if let (Ok(total), Ok(used), Ok(free)) = (
+                    if let (Ok(total), Ok(_used), Ok(free)) = (
                         parts[1].parse::<u64>(),
                         parts[2].parse::<u64>(),
                         parts[3].parse::<u64>()
@@ -90,7 +97,6 @@ impl StorageChecker {
                             name: parts[5].to_string(),
                             total_bytes: total,
                             free_bytes: free,
-                            used_bytes: used,
                             drive_type: DriveType::Fixed,
                             file_system: Some(parts[0].to_string()),
                         });
@@ -115,11 +121,15 @@ impl StorageChecker {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
+            use std::time::Duration;
+            use crate::util::command::run_with_timeout;
 
             // Query defrag status (requires admin, may fail)
-            let output = Command::new("defrag")
-                .args(&[drive, "/A", "/V"])
-                .output();
+            let output = run_with_timeout({
+                let mut c = Command::new("defrag");
+                c.args([drive, "/A", "/V"]);
+                c
+            }, Duration::from_secs(10));
 
             if let Ok(output) = output {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -129,7 +139,7 @@ impl StorageChecker {
                     if line.contains("fragmented") {
                         // Try to extract percentage
                         let words: Vec<&str> = line.split_whitespace().collect();
-                        for (i, word) in words.iter().enumerate() {
+                        for word in words.iter() {
                             if word.ends_with('%') {
                                 if let Ok(percent) = word.trim_end_matches('%').parse::<u32>() {
                                     return Some(percent);
@@ -150,7 +160,6 @@ struct DriveInfo {
     name: String,
     total_bytes: u64,
     free_bytes: u64,
-    used_bytes: u64,
     drive_type: DriveType,
     file_system: Option<String>,
 }
@@ -264,7 +273,7 @@ impl Checker for StorageChecker {
         #[cfg(target_os = "windows")]
         {
             if let Ok(temp_dir) = std::env::var("TEMP") {
-                if let Ok(metadata) = std::fs::metadata(&temp_dir) {
+                if let Ok(_metadata) = std::fs::metadata(&temp_dir) {
                     // Simplified check - in production, would recursively calculate size
                     issues.push(Issue {
                         id: "storage_temp_cleanup".to_string(),
@@ -305,6 +314,12 @@ impl Checker for StorageChecker {
             if issue_id.starts_with("storage_fragmentation_") {
                 // Extract drive letter from issue_id
                 if let Some(drive) = issue_id.strip_prefix("storage_fragmentation_") {
+                    // SECURITY: Validate drive letter to prevent command injection
+                    // Only allow single uppercase letters A-Z
+                    if drive.len() != 1 || !drive.chars().all(|c| c.is_ascii_uppercase()) {
+                        return Err(format!("Invalid drive letter: {}", drive));
+                    }
+
                     let drive_letter = format!("{}:", drive);
 
                     let result = Command::new("defrag")
